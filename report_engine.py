@@ -3,14 +3,14 @@
 Generate a 96-well plate HTML report from a CSV file.
 
 Plate map:
-- PurUC5 Lysate: A1-D1
-- NPs: E1-H1
+- NC63 + Film: A1-D1
+- Film: E1-H1
 - C: A2-H11
-- B: A12-D12
-- PurUC5 + NPs: E12-H12
+- NC63 Lysate: A12-D12
+- B: E12-H12
 
 Usage:
-    python plate_report.py test.csv -o plate_report.html
+    python report_engine.py test.csv -o plate_report.html
 """
 
 from __future__ import annotations
@@ -23,6 +23,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import matplotlib
+
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 
@@ -30,16 +34,16 @@ ROWS = list("ABCDEFGH")
 COLS = [str(i) for i in range(1, 13)]
 
 PLATE_GROUPS = {
-    "PurUC5 Lysate": [(r, "1") for r in "ABCD"],
-    "NPs": [(r, "1") for r in "EFGH"],
+    "NC63 + Film": [(r, "1") for r in "ABCD"],
+    "Film": [(r, "1") for r in "EFGH"],
     "C": [(r, str(c)) for r in ROWS for c in range(2, 12)],
-    "B": [(r, "12") for r in "ABCD"],
-    "PurUC5 + NPs": [(r, "12") for r in "EFGH"],
+    "NC63 Lysate": [(r, "12") for r in "ABCD"],
+    "B": [(r, "12") for r in "EFGH"],
 }
 
-# Edit these two names to change the Z' comparison.
-Z_PRIME_NEGATIVE = "NPs"
-Z_PRIME_POSITIVE = "PurUC5 + NPs"
+# Z' comparison for this plate layout.
+Z_PRIME_NEGATIVE = "Film"
+Z_PRIME_POSITIVE = "NC63 + Film"
 
 
 def load_plate(csv_path: Path) -> pd.DataFrame:
@@ -95,8 +99,8 @@ def calculate_control_zscores(
 ) -> tuple[pd.DataFrame, float, float, float]:
     """Calculate Z-scores relative to all valid wells on the plate.
 
-    E12:H12 are used only to derive the default candidate-hit threshold:
-    the highest plate Z-score among those four control wells.
+    The B wells E12:H12 are used only to derive the default
+    candidate-hit threshold: the highest plate Z-score among those wells.
     """
     plate_mean = float(np.nanmean(plate.values))
     plate_sd = float(np.nanstd(plate.values, ddof=1))
@@ -145,10 +149,13 @@ def calculate_control_zscores(
 
 def figure_to_data_uri(fig) -> str:
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=180, bbox_inches="tight")
-    plt.close(fig)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    try:
+        fig.savefig(buffer, format="png", dpi=140, bbox_inches="tight")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    finally:
+        plt.close(fig)
+        buffer.close()
 
 
 def make_zscore_heatmap(plate: pd.DataFrame) -> str:
@@ -409,7 +416,7 @@ section {{ margin-top: 18px; padding: 22px; }}
 }}
 img {{ width: 100%; height: auto; display: block; }}
 .qc {{
-  border-left: 5px solid {"var(--good)" if z_prime >= .5 else "var(--warn)" if z_prime >= 0 else "var(--bad)"};
+  border-left: 5px solid {"var(--muted)" if np.isnan(z_prime) else "var(--good)" if z_prime >= .5 else "var(--warn)" if z_prime >= 0 else "var(--bad)"};
 }}
 .note {{ color: var(--muted); }}
 code {{ background: #eef1f7; padding: 2px 5px; border-radius: 4px; }}
@@ -475,11 +482,11 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     <summary>Candidate hit wells</summary>
     <div class="content">
       <div class="threshold-note">
-        Controls: <strong>E12, F12, G12 and H12</strong><br>
+        B controls: <strong>E12, F12, G12 and H12</strong><br>
         Plate mean: <strong>{control_mean:.6f}</strong><br>
         Plate StDev: <strong>{control_sd:.6f}</strong><br>
         Hit rule: plate Z-score &gt; <strong>{applied_zscore_threshold:.3f}</strong>
-        {" (highest plate Z-score among controls E12:H12)" if zscore_threshold is None else " (user-supplied threshold)"}
+        {" (highest plate Z-score among B controls E12:H12)" if zscore_threshold is None else " (user-supplied threshold)"}
       </div>
       <div class="table-wrap">{passing_wells_table}</div>
     </div>
@@ -523,7 +530,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate a 96-well plate HTML QC report.")
     parser.add_argument("csv_file", type=Path)
     parser.add_argument("-o", "--output", type=Path, default=Path("plate_report.html"))
-    parser.add_argument("--title", default="96-Well Plate QC Report")
+    parser.add_argument("--title", default="NC63 + Film Plate QC Report")
     parser.add_argument("--sample-name", default="Unknown Sample",
                         help="Sample name displayed in the report")
     parser.add_argument(
@@ -532,7 +539,7 @@ def main() -> None:
         default=None,
         help=(
             "Plate Z-score required to pass. "
-            "Default: highest plate Z-score among control wells E12:H12."
+            "Default: highest plate Z-score among B control wells E12:H12."
         ),
     )
     args = parser.parse_args()
