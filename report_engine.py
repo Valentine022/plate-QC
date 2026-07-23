@@ -20,10 +20,12 @@ import base64
 import io
 import html
 from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 ROWS = list("ABCDEFGH")
@@ -145,7 +147,7 @@ def calculate_control_zscores(
 
 def figure_to_data_uri(fig) -> str:
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=180, bbox_inches="tight")
+    fig.savefig(buffer, format="png", dpi=100, bbox_inches="tight")
     plt.close(fig)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
