@@ -9,6 +9,8 @@ import streamlit as st
 from report_engine import generate_html
 
 
+ALLOWED_DOMAIN = "evoralis.com"
+
 st.set_page_config(
     page_title="96-Well Plate QC",
     page_icon="🧪",
@@ -34,6 +36,43 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+def login_screen() -> None:
+    st.markdown(
+        """
+        <div class="hero">
+          <h1>96-Well Plate QC Report Generator</h1>
+          <p>This private tool is restricted to Evoralis Google accounts.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.info("Sign in with an @evoralis.com Google account to continue.")
+    st.button(
+        "Sign in with Google",
+        on_click=st.login,
+        type="primary",
+        use_container_width=True,
+    )
+
+
+if not st.user.is_logged_in:
+    login_screen()
+    st.stop()
+
+email = str(getattr(st.user, "email", "") or "").strip().lower()
+domain_is_allowed = email.endswith(f"@{ALLOWED_DOMAIN}")
+
+if not domain_is_allowed:
+    st.error(
+        "Access denied. This application is restricted to "
+        f"Google accounts ending in @{ALLOWED_DOMAIN}."
+    )
+    if email:
+        st.caption(f"Signed in as: {email}")
+    st.button("Sign out", on_click=st.logout)
+    st.stop()
+
 st.markdown(
     """
     <div class="hero">
@@ -42,6 +81,20 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True,
+)
+
+top_left, top_right = st.columns([4, 1])
+with top_left:
+    st.success(f"Signed in as {email}")
+with top_right:
+    st.button("Sign out", on_click=st.logout, use_container_width=True)
+
+st.info(
+    "Privacy: uploaded files and generated outputs are processed in a temporary "
+    "directory for the current report request. The application has no database "
+    "and does not intentionally retain plate data after processing. Do not add "
+    "logging, analytics, cloud-storage, or database integrations without reviewing "
+    "their retention settings."
 )
 
 with st.sidebar:
@@ -78,9 +131,10 @@ st.write(f"**Selected file:** {uploaded.name}")
 if st.button("Generate QC report", type="primary", use_container_width=True):
     try:
         with st.spinner("Generating report..."):
-            with tempfile.TemporaryDirectory() as temp_dir:
+            # TemporaryDirectory removes its files when this block exits.
+            with tempfile.TemporaryDirectory(prefix="plate_qc_") as temp_dir:
                 temp = Path(temp_dir)
-                csv_path = temp / Path(uploaded.name).name
+                csv_path = temp / "uploaded_plate.csv"
                 csv_path.write_bytes(uploaded.getvalue())
 
                 html_path = temp / "plate_report.html"
@@ -93,6 +147,8 @@ if st.button("Generate QC report", type="primary", use_container_width=True):
                     zscore_threshold=threshold,
                 )
 
+                # Read generated files into the active user session before
+                # deleting the temporary directory.
                 html_bytes = html_path.read_bytes()
                 statistics_bytes = html_path.with_name(
                     "plate_report_statistics.csv"
@@ -141,4 +197,5 @@ if st.button("Generate QC report", type="primary", use_container_width=True):
         )
 
     except Exception as exc:
+        # Error text is shown, but uploaded file contents are never logged.
         st.error(f"Report generation failed: {exc}")
