@@ -7,7 +7,7 @@ import streamlit as st
 
 
 st.set_page_config(
-    page_title="96-Well Plate QC",
+    page_title="NC63 + Film Plate QC",
     page_icon="🧪",
     layout="wide",
 )
@@ -38,8 +38,15 @@ if not st.user.is_logged_in:
     st.markdown(
         """
         <style>
-          .stApp { background: #e8f7f5; }
-          .block-container { max-width: 900px; padding-top: 3rem; }
+          .stApp {
+            background: #e8f7f5;
+          }
+
+          .block-container {
+            max-width: 900px;
+            padding-top: 3rem;
+          }
+
           .hero {
             background: white;
             border: 1px solid #b9dfd8;
@@ -47,8 +54,14 @@ if not st.user.is_logged_in:
             padding: 1.4rem 1.6rem;
             margin-bottom: 1.2rem;
           }
-          .hero h1 { margin: 0; }
-          .hero p { margin: .4rem 0 0 0; }
+
+          .hero h1 {
+            margin: 0;
+          }
+
+          .hero p {
+            margin: .4rem 0 0 0;
+          }
         </style>
         """,
         unsafe_allow_html=True,
@@ -57,7 +70,7 @@ if not st.user.is_logged_in:
     st.markdown(
         """
         <div class="hero">
-          <h1>96-Well Plate QC Report Generator</h1>
+          <h1>NC63 + Film 96-Well Plate QC</h1>
           <p>This private tool is restricted to Evoralis Google accounts.</p>
         </div>
         """,
@@ -101,19 +114,26 @@ if not (
     st.stop()
 
 
-# Import the report engine only after authentication succeeds.
+# Import only after authentication succeeds.
 from report_engine import generate_html
 
 
 # -------------------------
-# Original working app
+# Main application
 # -------------------------
 
 st.markdown(
     """
     <style>
-      .stApp { background: #e8f7f5; }
-      .block-container { max-width: 1200px; padding-top: 2rem; }
+      .stApp {
+        background: #e8f7f5;
+      }
+
+      .block-container {
+        max-width: 1200px;
+        padding-top: 2rem;
+      }
+
       .hero {
         background: white;
         border: 1px solid #b9dfd8;
@@ -121,8 +141,14 @@ st.markdown(
         padding: 1.4rem 1.6rem;
         margin-bottom: 1.2rem;
       }
-      .hero h1 { margin: 0; }
-      .hero p { margin: .4rem 0 0 0; }
+
+      .hero h1 {
+        margin: 0;
+      }
+
+      .hero p {
+        margin: .4rem 0 0 0;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -131,12 +157,16 @@ st.markdown(
 st.markdown(
     """
     <div class="hero">
-      <h1>96-Well Plate QC Report Generator</h1>
-      <p>Upload a plate CSV, generate the QC report, and download the results.</p>
+      <h1>NC63 + Film 96-Well Plate QC</h1>
+      <p>
+        Upload a plate CSV, generate the QC report,
+        and download the results.
+      </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
 
 with st.sidebar:
     st.success(f"Signed in as {email}")
@@ -159,7 +189,7 @@ with st.sidebar:
 
     report_title = st.text_input(
         "Report title",
-        value="PurUC5 Plate QC",
+        value="NC63 + Film Plate QC",
         key="report_title_input",
     )
 
@@ -169,6 +199,7 @@ with st.sidebar:
     )
 
     threshold = None
+
     if custom_threshold:
         threshold = st.number_input(
             "Plate Z-score threshold",
@@ -180,8 +211,26 @@ with st.sidebar:
 
     st.caption(
         "Default hit threshold: the highest whole-plate "
-        "Z-score among E12:H12."
+        "Z-score among the B control wells E12:H12."
     )
+
+    with st.expander("Plate map"):
+        st.markdown(
+            """
+            | Wells | Group |
+            |---|---|
+            | A1–D1 | NC63 + Film |
+            | E1–H1 | Film |
+            | A2–H11 | C |
+            | A12–D12 | NC63 Lysate |
+            | E12–H12 | B |
+            """
+        )
+
+    st.caption(
+        "Z′ comparison: Film versus NC63 + Film."
+    )
+
 
 uploaded = st.file_uploader(
     "Upload 96-well plate CSV",
@@ -194,7 +243,9 @@ if uploaded is None:
     st.info("Upload a CSV file to begin.")
     st.stop()
 
+
 st.write(f"**Selected file:** {uploaded.name}")
+
 
 if st.button(
     "Generate QC report",
@@ -206,6 +257,7 @@ if st.button(
         with st.spinner("Generating report..."):
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp = Path(temp_dir)
+
                 csv_path = temp / Path(uploaded.name).name
                 csv_path.write_bytes(uploaded.getvalue())
 
@@ -220,16 +272,22 @@ if st.button(
                 )
 
                 html_bytes = html_path.read_bytes()
-                statistics_bytes = html_path.with_name(
+
+                statistics_path = html_path.with_name(
                     "plate_report_statistics.csv"
-                ).read_bytes()
-                hits_bytes = html_path.with_name(
+                )
+
+                hits_path = html_path.with_name(
                     "plate_report_passing_wells.csv"
-                ).read_bytes()
+                )
+
+                statistics_bytes = statistics_path.read_bytes()
+                hits_bytes = hits_path.read_bytes()
 
         st.success("Report generated successfully.")
 
         base_name = Path(uploaded.name).stem
+
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -263,6 +321,7 @@ if st.button(
             )
 
         st.subheader("Report preview")
+
         st.components.v1.html(
             html_bytes.decode("utf-8"),
             height=1100,
