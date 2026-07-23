@@ -7,7 +7,7 @@ import streamlit as st
 
 
 st.set_page_config(
-    page_title="NC63 + Film Plate QC",
+    page_title="Plate QC",
     page_icon="🧪",
     layout="wide",
 )
