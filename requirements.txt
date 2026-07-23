@@ -2,7 +2,6 @@ streamlit>=1.58.0
 Authlib>=1.3.2
 numpy>=1.26
 pandas>=2.2
-matplotlib>=3.8streamlit>=1.36
-numpy>=1.26
-pandas>=2.2
 matplotlib>=3.8
+streamlit[auth]>=1.60.0
+httpx>=0.27
