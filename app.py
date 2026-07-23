@@ -15,15 +15,19 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import base64
 import io
 import html
+import re
 from pathlib import Path
+import tempfile
+import streamlit as st
+import matplotlib
+matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 ROWS = list("ABCDEFGH")
@@ -144,11 +148,15 @@ def calculate_control_zscores(
 
 
 def figure_to_data_uri(fig) -> str:
+    """Convert a Matplotlib figure to a compact PNG data URI."""
     buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=180, bbox_inches="tight")
-    plt.close(fig)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    try:
+        fig.savefig(buffer, format="png", dpi=80, bbox_inches="tight")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    finally:
+        plt.close(fig)
+        buffer.close()
 
 
 def make_zscore_heatmap(plate: pd.DataFrame) -> str:
@@ -519,29 +527,197 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     print(f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE}): {z_prime:.6f}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a 96-well plate HTML QC report.")
-    parser.add_argument("csv_file", type=Path)
-    parser.add_argument("-o", "--output", type=Path, default=Path("plate_report.html"))
-    parser.add_argument("--title", default="96-Well Plate QC Report")
-    parser.add_argument("--sample-name", default="Unknown Sample",
-                        help="Sample name displayed in the report")
-    parser.add_argument(
-        "--zscore-threshold",
-        type=float,
-        default=None,
-        help=(
-            "Plate Z-score required to pass. "
-            "Default: highest plate Z-score among control wells E12:H12."
-        ),
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+ALLOWED_DOMAIN = "evoralis.com"
+
+
+def _user_value(name: str, default=None):
+    try:
+        value = getattr(st.user, name)
+        if value is not None:
+            return value
+    except Exception:
+        pass
+
+    try:
+        return st.user.get(name, default)
+    except Exception:
+        return default
+
+
+def user_is_authorized() -> bool:
+    email = str(_user_value("email", "") or "").strip().lower()
+    hosted_domain = str(_user_value("hd", "") or "").strip().lower()
+    email_verified = _user_value("email_verified", False)
+
+    return (
+        email.endswith(f"@{ALLOWED_DOMAIN}")
+        and hosted_domain == ALLOWED_DOMAIN
+        and email_verified is True
     )
-    args = parser.parse_args()
-
-    if not args.csv_file.exists():
-        parser.error(f"CSV file not found: {args.csv_file}")
-
-    generate_html(args.csv_file, args.output, args.title, args.sample_name, args.zscore_threshold)
 
 
-if __name__ == "__main__":
-    main()
+def render_login() -> None:
+    st.title("96-Well Plate QC Report Generator")
+    st.caption("This private tool is restricted to Evoralis Google accounts.")
+    st.info("Sign in with an @evoralis.com Google account to continue.")
+
+    if st.button("Sign in with Google", type="primary", use_container_width=True):
+        st.login()
+
+
+def render_app() -> None:
+    st.title("96-Well Plate QC Report Generator")
+
+    top_left, top_right = st.columns([5, 1])
+    with top_left:
+        st.caption(f"Signed in as {_user_value('email', '')}")
+    with top_right:
+        if st.button("Sign out", use_container_width=True):
+            st.logout()
+
+    uploaded_file = st.file_uploader(
+        "Upload plate CSV",
+        type=["csv"],
+        accept_multiple_files=False,
+    )
+
+    sample_name = st.text_input("Sample name", value="Unknown Sample")
+    report_title = st.text_input(
+        "Report title",
+        value="96-Well Plate QC Report",
+    )
+
+    use_default_threshold = st.checkbox(
+        "Use the highest plate Z-score among controls E12:H12 as the hit threshold",
+        value=True,
+    )
+
+    zscore_threshold = None
+    if not use_default_threshold:
+        zscore_threshold = st.number_input(
+            "Plate Z-score threshold",
+            value=2.0,
+            step=0.1,
+            format="%.3f",
+        )
+
+    # Important: uploading alone does not run report generation.
+    if uploaded_file is None:
+        st.info("Choose a CSV file, then press Generate report.")
+        return
+
+    if uploaded_file.size > MAX_UPLOAD_BYTES:
+        st.error("The CSV is too large. Please upload a file smaller than 5 MB.")
+        return
+
+    st.success(
+        f"File selected: {uploaded_file.name} "
+        f"({uploaded_file.size / 1024:.1f} KB)"
+    )
+
+    if not st.button(
+        "Generate report",
+        type="primary",
+        use_container_width=True,
+    ):
+        return
+
+    for key in (
+        "report_html",
+        "report_statistics",
+        "report_hits",
+        "report_base_name",
+    ):
+        st.session_state.pop(key, None)
+
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(uploaded_file.name).stem)
+    safe_stem = safe_stem.strip("._") or "plate_report"
+
+    try:
+        with st.spinner("Generating report..."):
+            with tempfile.TemporaryDirectory(prefix="plate_qc_") as temp_dir:
+                temp_path = Path(temp_dir)
+                input_path = temp_path / f"{safe_stem}.csv"
+                output_path = temp_path / f"{safe_stem}_qc_report.html"
+
+                input_path.write_bytes(uploaded_file.getvalue())
+
+                generate_html(
+                    input_path,
+                    output_path,
+                    report_title.strip() or "96-Well Plate QC Report",
+                    sample_name.strip() or "Unknown Sample",
+                    zscore_threshold,
+                )
+
+                statistics_path = output_path.with_name(
+                    output_path.stem + "_statistics.csv"
+                )
+                hits_path = output_path.with_name(
+                    output_path.stem + "_passing_wells.csv"
+                )
+
+                st.session_state["report_html"] = output_path.read_bytes()
+                st.session_state["report_statistics"] = statistics_path.read_bytes()
+                st.session_state["report_hits"] = hits_path.read_bytes()
+                st.session_state["report_base_name"] = safe_stem
+
+        st.success("Report generated successfully.")
+
+    except Exception as exc:
+        st.error("The report could not be generated.")
+        st.exception(exc)
+        return
+
+    base_name = st.session_state["report_base_name"]
+
+    st.download_button(
+        "Download HTML report",
+        data=st.session_state["report_html"],
+        file_name=f"{base_name}_qc_report.html",
+        mime="text/html",
+        use_container_width=True,
+    )
+
+    st.download_button(
+        "Download statistics CSV",
+        data=st.session_state["report_statistics"],
+        file_name=f"{base_name}_qc_report_statistics.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    st.download_button(
+        "Download candidate hits CSV",
+        data=st.session_state["report_hits"],
+        file_name=f"{base_name}_qc_report_passing_wells.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="96-Well Plate QC",
+        page_icon="🧪",
+        layout="wide",
+    )
+
+    if not st.user.is_logged_in:
+        render_login()
+        st.stop()
+
+    if not user_is_authorized():
+        st.error(
+            "Access denied. Sign in with a verified @evoralis.com "
+            "Google Workspace account."
+        )
+        if st.button("Sign out"):
+            st.logout()
+        st.stop()
+
+    render_app()
+
+
+main()
