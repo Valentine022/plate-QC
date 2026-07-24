@@ -211,7 +211,7 @@ with st.sidebar:
             | E1–H1 | Film |
             | A2–H11 | Samples |
             | A12–D12 | Lysate |
-            | E12–H12 | Blank |
+            | E12–H12 | Buffer |
             """
         )
 
