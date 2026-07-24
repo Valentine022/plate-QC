@@ -117,7 +117,7 @@ def calculate_hit_tables(
     Standard hit: raw signal >= mean signal of Film controls.
     High hit: raw signal >= Film-control mean + 3 * Film-control sample SD.
     """
-    film_wells = PLATE_GROUPS["Film"]
+    film_wells = PLATE_GROUPS["Enzyme + Film"]
     film_values = group_values(plate, film_wells)
 
     film_mean = float(film_values.mean())
