@@ -19,13 +19,10 @@ st.set_page_config(
 
 ALLOWED_DOMAIN = "evoralis.com"
 
-# Add manually approved email addresses here.
-# These can be Evoralis accounts or approved external accounts.
+# Add manually approved Google-account email addresses here.
 ALLOWED_EMAILS = {
-    "valentine.patterson@evoralis.com",
     "asha.webb@evoralis.com",
-    # "external.user@gmail.com",
-}
+    "valentine.patterson@evoralis.com"}
 
 
 def get_user_value(name: str, default=None):
@@ -43,6 +40,13 @@ def get_user_value(name: str, default=None):
         return default
 
 
+def claim_is_true(value) -> bool:
+    """Convert a Google/OIDC boolean claim safely."""
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return bool(value)
+
+
 # --------------------------------------------------
 # Authentication
 # --------------------------------------------------
@@ -51,15 +55,8 @@ if not st.user.is_logged_in:
     st.markdown(
         """
         <style>
-          .stApp {
-            background: #e8f7f5;
-          }
-
-          .block-container {
-            max-width: 900px;
-            padding-top: 3rem;
-          }
-
+          .stApp { background: #e8f7f5; }
+          .block-container { max-width: 900px; padding-top: 3rem; }
           .hero {
             background: white;
             border: 1px solid #b9dfd8;
@@ -67,14 +64,8 @@ if not st.user.is_logged_in:
             padding: 1.4rem 1.6rem;
             margin-bottom: 1.2rem;
           }
-
-          .hero h1 {
-            margin: 0;
-          }
-
-          .hero p {
-            margin: .4rem 0 0 0;
-          }
+          .hero h1 { margin: 0; }
+          .hero p { margin: .4rem 0 0 0; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -84,9 +75,7 @@ if not st.user.is_logged_in:
         """
         <div class="hero">
           <h1>96-Well Plate QC</h1>
-          <p>
-            This private tool is available to authorised users.
-          </p>
+          <p>This private tool is available to authorised users.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -105,62 +94,30 @@ if not st.user.is_logged_in:
     st.stop()
 
 
-# --------------------------------------------------
-# Read user details
-# --------------------------------------------------
+email = str(get_user_value("email", "") or "").strip().lower()
+email_verified = claim_is_true(get_user_value("email_verified", False))
 
-email = str(
-    get_user_value("email", "") or ""
-).strip().lower()
-
-email_verified_value = get_user_value(
-    "email_verified",
-    False,
-)
-
-# Google may return this as a boolean or a string.
-if isinstance(email_verified_value, str):
-    email_verified = (
-        email_verified_value.strip().lower() == "true"
-    )
-else:
-    email_verified = bool(email_verified_value)
-
-
-# --------------------------------------------------
-# Authorisation
-# --------------------------------------------------
-
-is_organisation_user = email.endswith(
-    f"@{ALLOWED_DOMAIN}"
-)
-
-is_manually_approved = email in {
-    allowed_email.strip().lower()
-    for allowed_email in ALLOWED_EMAILS
+allowed_emails = {
+    address.strip().lower()
+    for address in ALLOWED_EMAILS
+    if address.strip()
 }
 
 is_authorised = (
     email_verified
     and (
-        is_organisation_user
-        or is_manually_approved
+        email.endswith(f"@{ALLOWED_DOMAIN}")
+        or email in allowed_emails
     )
 )
 
 if not is_authorised:
     st.error(
-        "Access denied. Your Google account is not "
-        "authorised to use this application."
+        "Access denied. Your Google account is not authorised to use this application."
     )
 
     if email:
         st.write(f"Signed-in email: **{email}**")
-
-    st.caption(
-        "Ask the app administrator to add your email "
-        "address to the approved-user list."
-    )
 
     if st.button(
         "Sign out",
@@ -172,26 +129,19 @@ if not is_authorised:
     st.stop()
 
 
-# Import the report engine only after authentication succeeds.
+# Import only after authentication succeeds.
 from report_engine import generate_html
 
 
 # --------------------------------------------------
-# Main application styling
+# Main interface
 # --------------------------------------------------
 
 st.markdown(
     """
     <style>
-      .stApp {
-        background: #e8f7f5;
-      }
-
-      .block-container {
-        max-width: 1200px;
-        padding-top: 2rem;
-      }
-
+      .stApp { background: #e8f7f5; }
+      .block-container { max-width: 1200px; padding-top: 2rem; }
       .hero {
         background: white;
         border: 1px solid #b9dfd8;
@@ -199,37 +149,23 @@ st.markdown(
         padding: 1.4rem 1.6rem;
         margin-bottom: 1.2rem;
       }
-
-      .hero h1 {
-        margin: 0;
-      }
-
-      .hero p {
-        margin: .4rem 0 0 0;
-      }
+      .hero h1 { margin: 0; }
+      .hero p { margin: .4rem 0 0 0; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
 st.markdown(
     """
     <div class="hero">
-      <h1>NC63 + Film 96-Well Plate QC</h1>
-      <p>
-        Upload a plate CSV, generate the QC report,
-        and download the results.
-      </p>
+      <h1>96-Well Plate QC</h1>
+      <p>Upload a plate CSV, generate the QC report, and download the results.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-
-# --------------------------------------------------
-# Sidebar
-# --------------------------------------------------
 
 with st.sidebar:
     st.success(f"Signed in as {email}")
@@ -246,35 +182,24 @@ with st.sidebar:
 
     sample_name = st.text_input(
         "Sample name",
-        value="Unknown Sample",
+        value="Sample",
         key="sample_name_input",
     )
 
     report_title = st.text_input(
         "Report title",
-        value="NC63 + Film Plate QC",
+        value="Plate QC",
         key="report_title_input",
     )
 
-    custom_threshold = st.checkbox(
-        "Use custom plate Z-score threshold",
-        key="custom_threshold_checkbox",
+    st.caption(
+        "QC rules: Z′ < 0 = Fail; 0–0.5 = Acceptable; "
+        "Z′ > 0.5 = Pass."
     )
 
-    threshold = None
-
-    if custom_threshold:
-        threshold = st.number_input(
-            "Plate Z-score threshold",
-            value=2.000,
-            step=0.100,
-            format="%.3f",
-            key="threshold_input",
-        )
-
     st.caption(
-        "Default hit threshold: the highest whole-plate "
-        "Z-score among the B control wells E12:H12."
+        "Statistics and hit tables are suppressed only when Z′ is below zero "
+        "or cannot be calculated."
     )
 
     with st.expander("Plate map"):
@@ -282,30 +207,28 @@ with st.sidebar:
             """
             | Wells | Group |
             |---|---|
-            | A1–D1 | NC63 + Film |
+            | A1–D1 | Enzyme + Film |
             | E1–H1 | Film |
-            | A2–H11 | C |
-            | A12–D12 | NC63 Lysate |
-            | E12–H12 | B |
+            | A2–H11 | Samples |
+            | A12–D12 | Lysate |
+            | E12–H12 | Blank |
             """
         )
 
-    st.caption(
-        "Z′ comparison: Film versus NC63 + Film."
-    )
+    with st.expander("Hit criteria"):
+        st.markdown(
+            """
+            **Standard hits:** raw signal ≥ mean of Film controls E1:H1.
 
+            **High-threshold hits:** raw signal ≥ Film-control mean + 3 × StDev.
+            """
+        )
 
-# --------------------------------------------------
-# File upload
-# --------------------------------------------------
 
 uploaded = st.file_uploader(
     "Upload 96-well plate CSV",
     type=["csv"],
-    help=(
-        "The file should contain rows A–H "
-        "and columns 1–12."
-    ),
+    help="The file should contain rows A–H and columns 1–12.",
     key="plate_csv_uploader",
 )
 
@@ -313,13 +236,8 @@ if uploaded is None:
     st.info("Upload a CSV file to begin.")
     st.stop()
 
-
 st.write(f"**Selected file:** {uploaded.name}")
 
-
-# --------------------------------------------------
-# Generate report
-# --------------------------------------------------
 
 if st.button(
     "Generate QC report",
@@ -331,137 +249,119 @@ if st.button(
         with st.spinner("Generating report..."):
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp = Path(temp_dir)
+                csv_path = temp / Path(uploaded.name).name
+                csv_path.write_bytes(uploaded.getvalue())
 
-                safe_filename = Path(
-                    uploaded.name
-                ).name
-
-                csv_path = temp / safe_filename
-                csv_path.write_bytes(
-                    uploaded.getvalue()
-                )
-
-                html_path = (
-                    temp / "plate_report.html"
-                )
+                html_path = temp / "plate_report.html"
 
                 generate_html(
                     csv_path=csv_path,
                     output_path=html_path,
                     title=report_title,
                     sample_name=sample_name,
-                    zscore_threshold=threshold,
-                )
-
-                statistics_path = (
-                    html_path.with_name(
-                        "plate_report_statistics.csv"
-                    )
-                )
-
-                hits_path = (
-                    html_path.with_name(
-                        "plate_report_passing_wells.csv"
-                    )
+                    zscore_threshold=None,
                 )
 
                 if not html_path.exists():
-                    raise FileNotFoundError(
-                        "The HTML report was not created."
-                    )
+                    raise FileNotFoundError("The HTML report was not created.")
 
-                if not statistics_path.exists():
-                    raise FileNotFoundError(
-                        "The statistics CSV was not created."
-                    )
+                results = {
+                    "source_name": uploaded.name,
+                    "html": html_path.read_bytes(),
+                }
 
-                if not hits_path.exists():
-                    raise FileNotFoundError(
-                        "The candidate-hits CSV "
-                        "was not created."
-                    )
+                optional_outputs = {
+                    "statistics": html_path.with_name(
+                        "plate_report_statistics.csv"
+                    ),
+                    "standard_hits": html_path.with_name(
+                        "plate_report_standard_hits.csv"
+                    ),
+                    "high_hits": html_path.with_name(
+                        "plate_report_high_hits.csv"
+                    ),
+                }
 
-                html_bytes = html_path.read_bytes()
-                statistics_bytes = (
-                    statistics_path.read_bytes()
-                )
-                hits_bytes = hits_path.read_bytes()
+                for key, file_path in optional_outputs.items():
+                    if file_path.exists():
+                        results[key] = file_path.read_bytes()
 
-        st.session_state["plate_report_results"] = {
-            "source_name": uploaded.name,
-            "html": html_bytes,
-            "statistics": statistics_bytes,
-            "hits": hits_bytes,
-        }
+        st.session_state["plate_report_results"] = results
 
     except Exception as exc:
-        st.error(
-            f"Report generation failed: {exc}"
-        )
+        st.error(f"Report generation failed: {exc}")
 
-
-# --------------------------------------------------
-# Display stored results
-# --------------------------------------------------
 
 if "plate_report_results" in st.session_state:
-    results = st.session_state[
-        "plate_report_results"
-    ]
+    results = st.session_state["plate_report_results"]
+    base_name = Path(results["source_name"]).stem
 
-    st.success(
-        "Report generated successfully."
+    st.success("Report generated successfully.")
+
+    download_columns = st.columns(
+        1 + sum(
+            key in results
+            for key in ("statistics", "standard_hits", "high_hits")
+        )
     )
 
-    base_name = Path(
-        results["source_name"]
-    ).stem
+    column_index = 0
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
+    with download_columns[column_index]:
         st.download_button(
             "Download HTML report",
             data=results["html"],
-            file_name=(
-                f"{base_name}_plate_report.html"
-            ),
+            file_name=f"{base_name}_plate_report.html",
             mime="text/html",
             key="download_html_button",
             use_container_width=True,
         )
+    column_index += 1
 
-    with col2:
-        st.download_button(
-            "Download statistics",
-            data=results["statistics"],
-            file_name=(
-                f"{base_name}_statistics.csv"
-            ),
-            mime="text/csv",
-            key="download_statistics_button",
-            use_container_width=True,
-        )
+    if "statistics" in results:
+        with download_columns[column_index]:
+            st.download_button(
+                "Download statistics",
+                data=results["statistics"],
+                file_name=f"{base_name}_statistics.csv",
+                mime="text/csv",
+                key="download_statistics_button",
+                use_container_width=True,
+            )
+        column_index += 1
 
-    with col3:
-        st.download_button(
-            "Download candidate hits",
-            data=results["hits"],
-            file_name=(
-                f"{base_name}_candidate_hits.csv"
-            ),
-            mime="text/csv",
-            key="download_hits_button",
-            use_container_width=True,
+    if "standard_hits" in results:
+        with download_columns[column_index]:
+            st.download_button(
+                "Download standard hits",
+                data=results["standard_hits"],
+                file_name=f"{base_name}_standard_hits.csv",
+                mime="text/csv",
+                key="download_standard_hits_button",
+                use_container_width=True,
+            )
+        column_index += 1
+
+    if "high_hits" in results:
+        with download_columns[column_index]:
+            st.download_button(
+                "Download high hits",
+                data=results["high_hits"],
+                file_name=f"{base_name}_high_hits.csv",
+                mime="text/csv",
+                key="download_high_hits_button",
+                use_container_width=True,
+            )
+
+    if "statistics" not in results:
+        st.warning(
+            "The plate failed QC with Z′ below zero, so statistics and hit "
+            "tables were not generated."
         )
 
     st.subheader("Report preview")
-
     st.components.v1.html(
-        results["html"].decode(
-            "utf-8",
-            errors="replace",
-        ),
+        results["html"].decode("utf-8", errors="replace"),
         height=1100,
         scrolling=True,
     )
