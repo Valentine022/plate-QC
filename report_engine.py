@@ -5,9 +5,9 @@ Generate a 96-well plate HTML report from a CSV file.
 Plate map:
 - Enzyme + Film: A1-D1
 - Film: E1-H1
-- C: A2-H11
+- Samples: A2-H11
 - Lysate: A12-D12
-- B: E12-H12
+- Blank: E12-H12
 
 Usage:
     python report_engine.py test.csv -o plate_report.html
@@ -36,9 +36,9 @@ COLS = [str(i) for i in range(1, 13)]
 PLATE_GROUPS = {
     "Enzyme + Film": [(r, "1") for r in "ABCD"],
     "Film": [(r, "1") for r in "EFGH"],
-    "C": [(r, str(c)) for r in ROWS for c in range(2, 12)],
+    "Samples": [(r, str(c)) for r in ROWS for c in range(2, 12)],
     "Lysate": [(r, "12") for r in "ABCD"],
-    "B": [(r, "12") for r in "EFGH"],
+    "Blank": [(r, "12") for r in "EFGH"],
 }
 
 # Z' comparison for this plate layout.
@@ -74,7 +74,6 @@ def calculate_statistics(plate: pd.DataFrame) -> pd.DataFrame:
                 "N": int(values.count()),
                 "Average": mean,
                 "StDev": stdev,
-                "CV %": (stdev / mean * 100) if mean != 0 else np.nan,
                 "Min": values.min(),
                 "Max": values.max(),
             }
@@ -258,13 +257,21 @@ def make_group_chart(stats: pd.DataFrame) -> str:
 
 
 def qc_interpretation(z_prime: float) -> tuple[str, str]:
+    """Classify the plate from its Z-prime factor."""
     if np.isnan(z_prime):
-        return "Fail", "The selected groups could not be compared."
-    if z_prime >= 0.5:
-        return "Pass", "The assay shows strong separation and low variability."
+        return "Fail", "The control groups could not be compared."
+    if z_prime > 0.5:
+        return "Pass", "The plate passed QC and shows strong control separation."
     if z_prime >= 0:
-        return "Acceptable", "The assay has limited separation or substantial variability."
-    return "Poor", "The group distributions overlap strongly relative to their variability."
+        return (
+            "Acceptable",
+            "The plate is acceptable, but control separation is below the pass threshold.",
+        )
+    return (
+        "Fail",
+        "The plate failed QC because the Z-prime factor is below zero. "
+        "Statistics and hit calls are not reported.",
+    )
 
 
 from datetime import datetime
@@ -274,7 +281,27 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     stats = calculate_statistics(plate)
     z_prime = calculate_z_prime(stats, Z_PRIME_NEGATIVE, Z_PRIME_POSITIVE)
     qc_label, qc_message = qc_interpretation(z_prime)
-    standard_hits, high_hits, film_mean, film_sd, high_threshold = calculate_hit_tables(plate)
+
+    # Statistics and hit calls are shown only when Z-prime is zero or higher.
+    report_statistics = not pd.isna(z_prime) and z_prime >= 0
+
+    if report_statistics:
+        standard_hits, high_hits, film_mean, film_sd, high_threshold = (
+            calculate_hit_tables(plate)
+        )
+    else:
+        empty_columns = [
+            "Well",
+            "Raw value",
+            "Standard threshold",
+            "High threshold",
+            "Result",
+        ]
+        standard_hits = pd.DataFrame(columns=empty_columns)
+        high_hits = pd.DataFrame(columns=empty_columns)
+        film_mean = np.nan
+        film_sd = np.nan
+        high_threshold = np.nan
 
     stats_display = stats.copy()
     for column in ["Average", "StDev", "Min", "Max"]:
@@ -318,8 +345,87 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     )
 
     raw_heatmap = make_raw_heatmap(plate)
-    z_heatmap = make_zscore_heatmap(plate)
-    group_chart = make_group_chart(stats)
+
+    if report_statistics:
+        z_heatmap = make_zscore_heatmap(plate)
+        group_chart = make_group_chart(stats)
+
+        statistics_nav = '<a href="#statistics">Statistics</a>'
+        z_heatmap_nav = '<a href="#z-heatmap">Z-score Heatmap</a>'
+        standard_hits_nav = '<a href="#standard-hits">Standard Hits</a>'
+        high_hits_nav = '<a href="#high-hits">High Hits</a>'
+        averages_nav = '<a href="#averages">Group Averages</a>'
+
+        statistics_section = f"""
+  <details id="statistics" open>
+    <summary>Group statistics</summary>
+    <div class="content table-wrap">{stats_table}</div>
+  </details>
+"""
+
+        z_heatmap_section = f"""
+  <details id="z-heatmap">
+    <summary>Plate Z-score heatmap</summary>
+    <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
+  </details>
+"""
+
+        standard_hits_section = f"""
+  <details id="standard-hits" open>
+    <summary>Standard hit wells</summary>
+    <div class="content">
+      <div class="threshold-note">
+        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film-control mean: <strong>{film_mean:.6f}</strong><br>
+        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
+      </div>
+      <div class="table-wrap">{standard_hits_table}</div>
+    </div>
+  </details>
+"""
+
+        high_hits_section = f"""
+  <details id="high-hits" open>
+    <summary>High-threshold hit wells</summary>
+    <div class="content">
+      <div class="threshold-note">
+        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film-control mean: <strong>{film_mean:.6f}</strong><br>
+        Film-control StDev: <strong>{film_sd:.6f}</strong><br>
+        High-hit rule: raw signal &gt;= mean + 3 x StDev =
+        <strong>{high_threshold:.6f}</strong>
+      </div>
+      <div class="table-wrap">{high_hits_table}</div>
+    </div>
+  </details>
+"""
+
+        averages_section = f"""
+  <details id="averages">
+    <summary>Group averages</summary>
+    <div class="content"><img src="{group_chart}" alt="Group average bar chart"></div>
+  </details>
+"""
+    else:
+        statistics_nav = ""
+        z_heatmap_nav = ""
+        standard_hits_nav = ""
+        high_hits_nav = ""
+        averages_nav = ""
+
+        statistics_section = """
+  <section class="qc-failure">
+    <h2>No statistics reported</h2>
+    <p>
+      The Z-prime factor is below zero, so group statistics, Z-score analysis,
+      hit calls, and hit exports have been suppressed.
+    </p>
+  </section>
+"""
+        z_heatmap_section = ""
+        standard_hits_section = ""
+        high_hits_section = ""
+        averages_section = ""
 
     html_doc = f"""<!doctype html>
 <html lang="en">
@@ -430,7 +536,7 @@ section {{ margin-top: 18px; padding: 22px; }}
 }}
 img {{ width: 100%; height: auto; display: block; }}
 .qc {{
-  border-left: 5px solid {"var(--muted)" if np.isnan(z_prime) else "var(--good)" if z_prime >= .5 else "var(--warn)" if z_prime >= 0 else "var(--bad)"};
+  border-left: 5px solid {"var(--bad)" if np.isnan(z_prime) or z_prime < 0 else "var(--good)" if z_prime > .5 else "var(--warn)"};
 }}
 .note {{ color: var(--muted); }}
 code {{ background: #eef1f7; padding: 2px 5px; border-radius: 4px; }}
@@ -441,12 +547,12 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 <nav class="topnav">
   <a href="#overview">Overview</a>
   <a href="#plate">Raw Plate</a>
-  <a href="#statistics">Statistics</a>
+  {statistics_nav}
   <a href="#raw-heatmap">Raw Heatmap</a>
-  <a href="#z-heatmap">Z-score Heatmap</a>
-  <a href="#standard-hits">Standard Hits</a>
-  <a href="#high-hits">High Hits</a>
-  <a href="#averages">Group Averages</a>
+  {z_heatmap_nav}
+  {standard_hits_nav}
+  {high_hits_nav}
+  {averages_nav}
 </nav>
 <main>
   <h1>{html.escape(title)}</h1>
@@ -479,51 +585,17 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     <div class="content table-wrap">{plate_table}</div>
   </details>
 
-  <details id="statistics" open>
-    <summary>Group statistics</summary>
-    <div class="content table-wrap">{stats_table}</div>
-  </details><details id="raw-heatmap" open>
+  {statistics_section}
+
+  <details id="raw-heatmap" open>
     <summary>Raw measurement heatmap</summary>
     <div class="content"><img src="{raw_heatmap}" alt="Raw plate measurement heatmap"></div>
   </details>
 
-  <details id="z-heatmap">
-    <summary>Plate Z-score heatmap</summary>
-    <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
-  </details>
-
-  <details id="standard-hits" open>
-    <summary>Standard hit wells</summary>
-    <div class="content">
-      <div class="threshold-note">
-        Film controls: <strong>E1, F1, G1 and H1</strong><br>
-        Film-control mean: <strong>{film_mean:.6f}</strong><br>
-        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
-      </div>
-      <div class="table-wrap">{standard_hits_table}</div>
-    </div>
-  </details>
-
-  <details id="high-hits" open>
-    <summary>High-threshold hit wells</summary>
-    <div class="content">
-      <div class="threshold-note">
-        Film controls: <strong>E1, F1, G1 and H1</strong><br>
-        Film-control mean: <strong>{film_mean:.6f}</strong><br>
-        Film-control StDev: <strong>{film_sd:.6f}</strong><br>
-        High-hit rule: raw signal &gt;= mean + 3 x StDev =
-        <strong>{high_threshold:.6f}</strong>
-      </div>
-      <div class="table-wrap">{high_hits_table}</div>
-    </div>
-  </details>
-
-  
-
-  <details id="averages">
-    <summary>Group averages</summary>
-    <div class="content"><img src="{group_chart}" alt="Group average bar chart"></div>
-  </details>
+  {z_heatmap_section}
+  {standard_hits_section}
+  {high_hits_section}
+  {averages_section}
 
   <footer>
     To change the Z' comparison, edit <code>Z_PRIME_NEGATIVE</code> and
@@ -535,29 +607,39 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 
     output_path.write_text(html_doc, encoding="utf-8")
 
-    stats_export = stats.reset_index()
-    stats_export.loc[len(stats_export)] = {
-        "Group": f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE})",
-        "Average": z_prime,
-    }
-    stats_export.to_csv(output_path.with_name(output_path.stem + "_statistics.csv"), index=False)
-    # Keep the legacy filename for compatibility with the Streamlit app.
-    standard_hits.to_csv(
+    export_paths = [
+        output_path.with_name(output_path.stem + "_statistics.csv"),
         output_path.with_name(output_path.stem + "_passing_wells.csv"),
-        index=False,
-    )
-    standard_hits.to_csv(
         output_path.with_name(output_path.stem + "_standard_hits.csv"),
-        index=False,
-    )
-    high_hits.to_csv(
         output_path.with_name(output_path.stem + "_high_hits.csv"),
-        index=False,
-    )
+    ]
+
+    if report_statistics:
+        stats_export = stats.reset_index()
+        stats_export.loc[len(stats_export)] = {
+            "Group": f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE})",
+            "Average": z_prime,
+        }
+        stats_export.to_csv(export_paths[0], index=False)
+
+        # Keep the legacy filename for compatibility with older app versions.
+        standard_hits.to_csv(export_paths[1], index=False)
+        standard_hits.to_csv(export_paths[2], index=False)
+        high_hits.to_csv(export_paths[3], index=False)
+    else:
+        # Ensure no statistics or hit files remain for a failed plate.
+        for export_path in export_paths:
+            export_path.unlink(missing_ok=True)
 
     print(f"HTML report: {output_path.resolve()}")
-    print(f"Statistics: {output_path.with_name(output_path.stem + '_statistics.csv').resolve()}")
-    print(stats)
+    if report_statistics:
+        print(
+            "Statistics: "
+            f"{output_path.with_name(output_path.stem + '_statistics.csv').resolve()}"
+        )
+        print(stats)
+    else:
+        print("Statistics and hit exports suppressed because Z-prime is below zero.")
     print(f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE}): {z_prime:.6f}")
 
 
