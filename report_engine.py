@@ -421,7 +421,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     <h2>No statistics reported</h2>
     <p>
       The Z-prime factor is below zero, so group statistics, Z-score analysis,
-      hit calls, and hit exports have been suppressed.
+      hit calls, and hit exports will not be shown.
     </p>
   </section>
 """
