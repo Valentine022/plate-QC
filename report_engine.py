@@ -112,10 +112,10 @@ def calculate_z_prime(stats: pd.DataFrame, negative: str, positive: str) -> floa
 def calculate_hit_tables(
     plate: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame, float, float, float]:
-    """Create standard-hit and high-hit tables from Film controls E1:H1.
+    """Create standard-hit and high-hit tables from Enzyme + Film controls A1:D1.
 
-    Standard hit: raw signal >= mean signal of Film controls.
-    High hit: raw signal >= Film-control mean + 3 * Film-control sample SD.
+    Standard hit: raw signal >= mean signal of Enzyme + Film controls.
+    High hit: raw signal >= Enzyme + Film-control mean + 3 * Enzyme + Film-control sample SD.
     """
     film_wells = PLATE_GROUPS["Enzyme + Film"]
     film_values = group_values(plate, film_wells)
