@@ -259,11 +259,11 @@ def make_group_chart(stats: pd.DataFrame) -> str:
 
 def qc_interpretation(z_prime: float) -> tuple[str, str]:
     if np.isnan(z_prime):
-        return "Unavailable", "The selected groups could not be compared."
+        return "Fail", "The selected groups could not be compared."
     if z_prime >= 0.5:
-        return "Excellent", "The assay shows strong separation and low variability."
+        return "Pass", "The assay shows strong separation and low variability."
     if z_prime >= 0:
-        return "Marginal", "The assay has limited separation or substantial variability."
+        return "Acceptable", "The assay has limited separation or substantial variability."
     return "Poor", "The group distributions overlap strongly relative to their variability."
 
 
