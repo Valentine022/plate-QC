@@ -7,7 +7,7 @@ Plate map:
 - Film: E1-H1
 - Samples: A2-H11
 - Lysate: A12-D12
-- Blank: E12-H12
+- Buffer: E12-H12
 
 Usage:
     python report_engine.py test.csv -o plate_report.html
@@ -38,7 +38,7 @@ PLATE_GROUPS = {
     "Film": [(r, "1") for r in "EFGH"],
     "Samples": [(r, str(c)) for r in ROWS for c in range(2, 12)],
     "Lysate": [(r, "12") for r in "ABCD"],
-    "Blank": [(r, "12") for r in "EFGH"],
+    "Buffer": [(r, "12") for r in "EFGH"],
 }
 
 # Z' comparison for this plate layout.
