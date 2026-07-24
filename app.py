@@ -83,7 +83,7 @@ if not st.user.is_logged_in:
     st.markdown(
         """
         <div class="hero">
-          <h1>NC63 + Film 96-Well Plate QC</h1>
+          <h1>96-Well Plate QC</h1>
           <p>
             This private tool is available to authorised users.
           </p>
