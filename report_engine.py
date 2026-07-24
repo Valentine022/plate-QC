@@ -425,7 +425,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
   <section class="qc-failure">
     <p>
       Z-score is below zero, so the Z-score heatmap, hit tables,
-      group averages, and CSV hit exports have been suppressed.
+      group averages, and CSV hit exports will not be shown.
     </p>
   </section>
 """
@@ -639,7 +639,7 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
         )
         print(stats)
     else:
-        print("Hit exports suppressed because Z-score is below zero; group statistics were exported.")
+        print("Hit exports will not be shown because Z-score is below zero; group statistics were exported.")
     print(f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE}): {z_prime:.6f}")
 
 
