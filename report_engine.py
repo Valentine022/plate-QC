@@ -265,7 +265,7 @@ def qc_interpretation(z_prime: float) -> tuple[str, str]:
     if z_prime >= 0:
         return (
             "Acceptable",
-            "The plate is acceptable, but control separation is below the pass threshold.",
+            "The plate is acceptable, but control separation is low.",
         )
     return (
         "Fail",
@@ -368,21 +368,6 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
   </details>
 """
-
-        standard_hits_section = f"""
-  <details id="standard-hits" open>
-    <summary>Standard hit wells</summary>
-    <div class="content">
-      <div class="threshold-note">
-        Film controls: <strong>E1, F1, G1 and H1</strong><br>
-        Film-control mean: <strong>{film_mean:.6f}</strong><br>
-        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
-      </div>
-      <div class="table-wrap">{standard_hits_table}</div>
-    </div>
-  </details>
-"""
-
         high_hits_section = f"""
   <details id="high-hits" open>
     <summary>High-threshold hit wells</summary>
@@ -398,7 +383,19 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     </div>
   </details>
 """
-
+        standard_hits_section = f"""
+  <details id="standard-hits" open>
+    <summary>Standard hit wells</summary>
+    <div class="content">
+      <div class="threshold-note">
+        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film-control mean: <strong>{film_mean:.6f}</strong><br>
+        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
+      </div>
+      <div class="table-wrap">{standard_hits_table}</div>
+    </div>
+  </details>
+"""
         averages_section = f"""
   <details id="averages">
     <summary>Group averages</summary>
