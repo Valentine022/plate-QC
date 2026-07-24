@@ -198,7 +198,7 @@ with st.sidebar:
     )
 
     st.caption(
-        "Statistics and hit tables are suppressed only when Z′ is below zero "
+        "Statistics and hit tables are not shown when Z′ is below zero "
         "or cannot be calculated."
     )
 
