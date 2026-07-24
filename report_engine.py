@@ -566,8 +566,6 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 </div>
 
   <div class="cards">
-    <div class="card"><div class="label">Valid wells</div><div class="value">{int(plate.count().sum())}</div></div>
-    <div class="card"><div class="label">Plate StDev</div><div class="value">{np.nanstd(plate.values, ddof=1):.5f}</div></div>
     <div class="card"><div class="label">Z' factor</div><div class="value">{z_prime:.4f}</div></div>
   </div>
 
