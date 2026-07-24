@@ -67,7 +67,7 @@ def calculate_statistics(plate: pd.DataFrame) -> pd.DataFrame:
     for group, wells in PLATE_GROUPS.items():
         values = group_values(plate, wells)
         mean = values.mean()
-        stdev = values.std(ddof=1)
+        stdev = values.std(ddof=0)
         records.append(
             {
                 "Group": group,
@@ -121,7 +121,7 @@ def calculate_hit_tables(
     film_values = group_values(plate, film_wells)
 
     film_mean = float(film_values.mean())
-    film_sd = float(film_values.std(ddof=1))
+    film_sd = float(film_values.std(ddof=0))
     high_threshold = film_mean + (3 * film_sd)
 
     excluded_controls = {f"{row}{col}" for row, col in film_wells}
@@ -180,7 +180,7 @@ def figure_to_data_uri(fig) -> str:
 def make_zscore_heatmap(plate: pd.DataFrame) -> str:
     """Create a Z-score heatmap relative to all valid wells on the plate."""
     plate_mean = np.nanmean(plate.values)
-    plate_sd = np.nanstd(plate.values, ddof=1)
+    plate_sd = np.nanstd(plate.values, ddof=0)
 
     if plate_sd == 0 or pd.isna(plate_sd):
         z_plate = plate * np.nan
