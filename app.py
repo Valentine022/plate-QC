@@ -218,7 +218,7 @@ with st.sidebar:
     with st.expander("Hit criteria"):
         st.markdown(
             """
-            **Standard hits:** raw signal ≥ mean of Film controls E1:H1.
+            **Standard hits:** raw signal ≥ mean of Film controls A1:D1.
 
             **High-threshold hits:** raw signal ≥ Film-control mean + 3 × StDev.
             """
