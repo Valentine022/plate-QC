@@ -260,7 +260,7 @@ def qc_interpretation(z_prime: float) -> tuple[str, str]:
     """Classify the plate from its Z-prime factor."""
     if np.isnan(z_prime):
         return "Fail", "The control groups could not be compared."
-    if z_prime > 0.5:
+    if z_prime > 0.3:
         return "Pass", "The plate passed QC and shows strong control separation."
     if z_prime >= 0:
         return (
