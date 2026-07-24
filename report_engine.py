@@ -563,7 +563,7 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 </nav>
 <main>
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-    <img src="EvoralisLogo.jpeg"
+    <img src="EvoralisLogo.png"
          alt="Evoralis"
          style="height:80px;width:auto;">
 
