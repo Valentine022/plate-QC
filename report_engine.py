@@ -42,7 +42,7 @@ PLATE_GROUPS = {
 }
 
 # Z' comparison for this plate layout.
-Z_PRIME_NEGATIVE = "Film"
+Z_PRIME_NEGATIVE = "Lysate"
 Z_PRIME_POSITIVE = "Enzyme + Film"
 
 
@@ -82,24 +82,31 @@ def calculate_statistics(plate: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_z_prime(stats: pd.DataFrame, negative: str, positive: str) -> float:
-    """Calculate Z-prime using the Excel-equivalent formula.
-
-    =1-((3*(F13+F14))/ABS(C13-C14))
     """
-    negative_mean = float(stats.loc[negative, "Average"])
-    negative_sd = float(stats.loc[negative, "StDev"])
-    positive_mean = float(stats.loc[positive, "Average"])
-    positive_sd = float(stats.loc[positive, "StDev"])
+    Excel equivalent:
+    =1-((3*(F13+F14))/ABS(C13-C14))
 
-    required = [negative_mean, negative_sd, positive_mean, positive_sd]
-    if any(pd.isna(value) for value in required):
+    F13 = SD of Enzyme + Film
+    F14 = SD of Lysate
+    C13 = Mean of Enzyme + Film
+    C14 = Mean of Lysate
+    """
+
+    enzyme_mean = float(stats.loc["Enzyme + Film", "Average"])
+    enzyme_sd = float(stats.loc["Enzyme + Film", "StDev"])
+
+    lysate_mean = float(stats.loc["Lysate", "Average"])
+    lysate_sd = float(stats.loc["Lysate", "StDev"])
+
+    if any(pd.isna(v) for v in [enzyme_mean, enzyme_sd, lysate_mean, lysate_sd]):
         return np.nan
 
-    mean_difference = abs(negative_mean - positive_mean)
-    if mean_difference == 0:
+    denominator = abs(enzyme_mean - lysate_mean)
+
+    if denominator == 0:
         return np.nan
 
-    return 1 - ((3 * (negative_sd + positive_sd)) / mean_difference)
+    return 1 - ((3 * (enzyme_sd + lysate_sd)) / denominator)
 
 
 def calculate_hit_tables(
