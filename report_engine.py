@@ -410,20 +410,26 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
   </details>
 """
     else:
-        statistics_nav = ""
+        statistics_nav = '<a href="#statistics">Statistics</a>'
         z_heatmap_nav = ""
         standard_hits_nav = ""
         high_hits_nav = ""
         averages_nav = ""
 
-        statistics_section = """
-  <section class="qc-failure">
-    <h2>No statistics reported</h2>
-    <p>
-      The Z-prime factor is below zero, so group statistics, Z-score analysis,
-      hit calls, and hit exports will not be shown.
-    </p>
-  </section>
+statistics_section = f"""
+<details id="statistics" open>
+  <summary>Group statistics</summary>
+  <div class="content table-wrap">
+    {stats_table}
+  </div>
+</details>
+
+<section class="qc-failure">
+  <p>
+    Z-prime is below zero, so the Z-score heatmap, hit tables,
+    group averages, and CSV hit exports have been suppressed.
+  </p>
+</section>
 """
         z_heatmap_section = ""
         standard_hits_section = ""
