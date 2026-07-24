@@ -352,6 +352,17 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
 
     raw_heatmap = make_raw_heatmap(plate)
 
+    logo_path = Path(__file__).resolve().parent / "EvoralisLogo.png"
+
+    if logo_path.exists():
+        logo_base64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+        logo_html = (
+            f'<img src="data:image/png;base64,{logo_base64}" '
+            f'alt="Evoralis" style="height:80px;width:auto;">'
+        )
+    else:
+        logo_html = ""
+
     if report_statistics:
         z_heatmap = make_zscore_heatmap(plate)
         group_chart = make_group_chart(stats)
@@ -563,9 +574,7 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 </nav>
 <main>
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-    <img src="EvoralisLogo.png"
-         alt="Evoralis"
-         style="height:80px;width:auto;">
+    {logo_html}
 
     <div style="text-align:right;">
         <h1 style="margin:0;">{html.escape(title)}</h1>
