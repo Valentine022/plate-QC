@@ -380,7 +380,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     <summary>High-threshold hit wells</summary>
     <div class="content">
       <div class="threshold-note">
-        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film controls: <strong>A1, B1, C1 and D1</strong><br>
         Film-control mean: <strong>{film_mean:.6f}</strong><br>
         Film-control StDev: <strong>{film_sd:.6f}</strong><br>
         High-hit rule: raw signal &gt;= mean + 3 x StDev =
@@ -395,7 +395,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     <summary>Standard hit wells</summary>
     <div class="content">
       <div class="threshold-note">
-        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film controls: <strong>A1, B1, C1 and D1</strong><br>
         Film-control mean: <strong>{film_mean:.6f}</strong><br>
         Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
       </div>
