@@ -83,68 +83,81 @@ def calculate_statistics(plate: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_z_prime(stats: pd.DataFrame, negative: str, positive: str) -> float:
-    neg_mean = stats.loc[negative, "Average"]
-    neg_sd = stats.loc[negative, "StDev"]
-    pos_mean = stats.loc[positive, "Average"]
-    pos_sd = stats.loc[positive, "StDev"]
-    difference = abs(pos_mean - neg_mean)
-    if difference == 0 or np.isnan(difference):
-        return np.nan
-    return 1 - (3 * (neg_sd + pos_sd) / difference)
+    """Calculate Z-prime using the Excel-equivalent formula.
 
-
-def calculate_control_zscores(
-    plate: pd.DataFrame,
-    threshold: float | None = None,
-) -> tuple[pd.DataFrame, float, float, float]:
-    """Calculate Z-scores relative to all valid wells on the plate.
-
-    The B wells E12:H12 are used only to derive the default
-    candidate-hit threshold: the highest plate Z-score among those wells.
+    =1-((3*(F13+F14))/ABS(C13-C14))
     """
-    plate_mean = float(np.nanmean(plate.values))
-    plate_sd = float(np.nanstd(plate.values, ddof=1))
-    control_wells = [(row, "12") for row in "EFGH"]
+    negative_mean = float(stats.loc[negative, "Average"])
+    negative_sd = float(stats.loc[negative, "StDev"])
+    positive_mean = float(stats.loc[positive, "Average"])
+    positive_sd = float(stats.loc[positive, "StDev"])
 
-    if plate_sd == 0 or pd.isna(plate_sd):
-        z_plate = plate * np.nan
-        applied_threshold = np.nan if threshold is None else float(threshold)
-    else:
-        z_plate = (plate - plate_mean) / plate_sd
-        control_zscores = pd.Series(
-            [z_plate.loc[row, col] for row, col in control_wells],
-            index=[f"{row}{col}" for row, col in control_wells],
-            dtype="float64",
-        )
-        applied_threshold = (
-            float(control_zscores.max()) if threshold is None else float(threshold)
-        )
+    required = [negative_mean, negative_sd, positive_mean, positive_sd]
+    if any(pd.isna(value) for value in required):
+        return np.nan
 
+    mean_difference = abs(negative_mean - positive_mean)
+    if mean_difference == 0:
+        return np.nan
+
+    return 1 - ((3 * (negative_sd + positive_sd)) / mean_difference)
+
+
+def calculate_hit_tables(
+    plate: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, float, float, float]:
+    """Create standard-hit and high-hit tables from Film controls E1:H1.
+
+    Standard hit: raw signal >= mean signal of Film controls.
+    High hit: raw signal >= Film-control mean + 3 * Film-control sample SD.
+    """
+    film_wells = PLATE_GROUPS["Film"]
+    film_values = group_values(plate, film_wells)
+
+    film_mean = float(film_values.mean())
+    film_sd = float(film_values.std(ddof=1))
+    high_threshold = film_mean + (3 * film_sd)
+
+    excluded_controls = {f"{row}{col}" for row, col in film_wells}
     records = []
+
     for row in ROWS:
         for col in COLS:
+            well = f"{row}{col}"
             value = plate.loc[row, col]
-            z_score = z_plate.loc[row, col]
-            if pd.notna(value) and pd.notna(z_score) and z_score > applied_threshold:
-                records.append(
-                    {
-                        "Well": f"{row}{col}",
-                        "Raw value": value,
-                        "Plate Z-score": z_score,
-                        "Result": "PASS",
-                    }
-                )
+            if well in excluded_controls or pd.isna(value):
+                continue
 
-    passing = pd.DataFrame(
+            records.append(
+                {
+                    "Well": well,
+                    "Raw value": float(value),
+                    "Standard threshold": film_mean,
+                    "High threshold": high_threshold,
+                }
+            )
+
+    all_wells = pd.DataFrame(
         records,
-        columns=["Well", "Raw value", "Plate Z-score", "Result"],
+        columns=["Well", "Raw value", "Standard threshold", "High threshold"],
     )
-    if not passing.empty:
-        passing = passing.sort_values(
-            "Plate Z-score", ascending=False
-        ).reset_index(drop=True)
 
-    return passing, plate_mean, plate_sd, applied_threshold
+    if pd.isna(film_mean):
+        standard_hits = all_wells.iloc[0:0].copy()
+    else:
+        standard_hits = all_wells[all_wells["Raw value"] >= film_mean].copy()
+
+    if pd.isna(high_threshold):
+        high_hits = all_wells.iloc[0:0].copy()
+    else:
+        high_hits = all_wells[all_wells["Raw value"] >= high_threshold].copy()
+
+    for table, label in ((standard_hits, "STANDARD HIT"), (high_hits, "HIGH HIT")):
+        table["Result"] = label
+        table.sort_values("Raw value", ascending=False, inplace=True)
+        table.reset_index(drop=True, inplace=True)
+
+    return standard_hits, high_hits, film_mean, film_sd, high_threshold
 
 
 def figure_to_data_uri(fig) -> str:
@@ -261,9 +274,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     stats = calculate_statistics(plate)
     z_prime = calculate_z_prime(stats, Z_PRIME_NEGATIVE, Z_PRIME_POSITIVE)
     qc_label, qc_message = qc_interpretation(z_prime)
-    passing_wells, control_mean, control_sd, applied_zscore_threshold = calculate_control_zscores(
-        plate, zscore_threshold
-    )
+    standard_hits, high_hits, film_mean, film_sd, high_threshold = calculate_hit_tables(plate)
 
     stats_display = stats.copy()
     for column in ["Average", "StDev", "Min", "Max"]:
@@ -283,25 +294,28 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
         na_rep="—",
     )
 
-    if passing_wells.empty:
-        passing_wells_table = (
-            '<p class="note">No wells exceeded the selected control-relative '
-            'Z-score threshold.</p>'
-        )
-    else:
-        passing_display = passing_wells.copy()
-        passing_display["Raw value"] = passing_display["Raw value"].map(
-            lambda x: f"{x:.6f}"
-        )
-        passing_display["Plate Z-score"] = passing_display["Plate Z-score"].map(
-            lambda x: f"{x:.3f}"
-        )
-        passing_wells_table = passing_display.to_html(
+    def format_hit_table(table: pd.DataFrame, empty_message: str) -> str:
+        if table.empty:
+            return f'<p class="note">{html.escape(empty_message)}</p>'
+
+        display = table.copy()
+        for column in ["Raw value", "Standard threshold", "High threshold"]:
+            display[column] = display[column].map(lambda value: f"{value:.6f}")
+        return display.to_html(
             index=False,
             classes="report-table passing-table",
             border=0,
             escape=True,
         )
+
+    standard_hits_table = format_hit_table(
+        standard_hits,
+        "No wells met the standard-hit threshold.",
+    )
+    high_hits_table = format_hit_table(
+        high_hits,
+        "No wells met the high-hit threshold.",
+    )
 
     raw_heatmap = make_raw_heatmap(plate)
     z_heatmap = make_zscore_heatmap(plate)
@@ -430,7 +444,8 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
   <a href="#statistics">Statistics</a>
   <a href="#raw-heatmap">Raw Heatmap</a>
   <a href="#z-heatmap">Z-score Heatmap</a>
-  <a href="#passing-wells">Candidate Hits</a>
+  <a href="#standard-hits">Standard Hits</a>
+  <a href="#high-hits">High Hits</a>
   <a href="#averages">Group Averages</a>
 </nav>
 <main>
@@ -443,7 +458,6 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 
   <div class="cards">
     <div class="card"><div class="label">Valid wells</div><div class="value">{int(plate.count().sum())}</div></div>
-    <div class="card"><div class="label">Plate average</div><div class="value">{np.nanmean(plate.values):.5f}</div></div>
     <div class="card"><div class="label">Plate StDev</div><div class="value">{np.nanstd(plate.values, ddof=1):.5f}</div></div>
     <div class="card"><div class="label">Z' factor</div><div class="value">{z_prime:.4f}</div></div>
   </div>
@@ -478,17 +492,29 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
   </details>
 
-  <details id="passing-wells" open>
-    <summary>Candidate hit wells</summary>
+  <details id="standard-hits" open>
+    <summary>Standard hit wells</summary>
     <div class="content">
       <div class="threshold-note">
-        B controls: <strong>E12, F12, G12 and H12</strong><br>
-        Plate mean: <strong>{control_mean:.6f}</strong><br>
-        Plate StDev: <strong>{control_sd:.6f}</strong><br>
-        Hit rule: plate Z-score &gt; <strong>{applied_zscore_threshold:.3f}</strong>
-        {" (highest plate Z-score among B controls E12:H12)" if zscore_threshold is None else " (user-supplied threshold)"}
+        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film-control mean: <strong>{film_mean:.6f}</strong><br>
+        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
       </div>
-      <div class="table-wrap">{passing_wells_table}</div>
+      <div class="table-wrap">{standard_hits_table}</div>
+    </div>
+  </details>
+
+  <details id="high-hits" open>
+    <summary>High-threshold hit wells</summary>
+    <div class="content">
+      <div class="threshold-note">
+        Film controls: <strong>E1, F1, G1 and H1</strong><br>
+        Film-control mean: <strong>{film_mean:.6f}</strong><br>
+        Film-control StDev: <strong>{film_sd:.6f}</strong><br>
+        High-hit rule: raw signal &gt;= mean + 3 x StDev =
+        <strong>{high_threshold:.6f}</strong>
+      </div>
+      <div class="table-wrap">{high_hits_table}</div>
     </div>
   </details>
 
@@ -515,8 +541,17 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
         "Average": z_prime,
     }
     stats_export.to_csv(output_path.with_name(output_path.stem + "_statistics.csv"), index=False)
-    passing_wells.to_csv(
+    # Keep the legacy filename for compatibility with the Streamlit app.
+    standard_hits.to_csv(
         output_path.with_name(output_path.stem + "_passing_wells.csv"),
+        index=False,
+    )
+    standard_hits.to_csv(
+        output_path.with_name(output_path.stem + "_standard_hits.csv"),
+        index=False,
+    )
+    high_hits.to_csv(
+        output_path.with_name(output_path.stem + "_high_hits.csv"),
         index=False,
     )
 
