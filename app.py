@@ -193,8 +193,8 @@ with st.sidebar:
     )
 
     st.caption(
-        "QC rules: Z′ < 0 = Fail; 0–0.5 = Acceptable; "
-        "Z′ > 0.5 = Pass."
+        "QC rules: Z′ < 0 = Fail; 0–0.3 = Acceptable; "
+        "Z′ > 0.3 = Pass."
     )
 
     st.caption(
