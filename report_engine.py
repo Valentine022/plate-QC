@@ -567,11 +567,6 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
   <section class="qc">
     <h2>QC assessment: {qc_label}</h2>
     <p>{qc_message}</p>
-    <p class="note">
-      Z' comparison: <strong>{html.escape(Z_PRIME_NEGATIVE)}</strong> versus
-      <strong>{html.escape(Z_PRIME_POSITIVE)}</strong>.
-      Formula: 1 − 3(σ₁ + σ₂) / |μ₁ − μ₂|.
-    </p>
   </section>
 
   <div id="overview"></div>
@@ -589,8 +584,8 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
   </details>
 
   {z_heatmap_section}
-  {standard_hits_section}
   {high_hits_section}
+  {standard_hits_section}
   {averages_section}
 
   <footer>
@@ -606,8 +601,8 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     export_paths = [
         output_path.with_name(output_path.stem + "_statistics.csv"),
         output_path.with_name(output_path.stem + "_passing_wells.csv"),
-        output_path.with_name(output_path.stem + "_standard_hits.csv"),
         output_path.with_name(output_path.stem + "_high_hits.csv"),
+        output_path.with_name(output_path.stem + "_standard_hits.csv"),
     ]
 
     if report_statistics:
