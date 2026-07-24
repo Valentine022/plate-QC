@@ -277,7 +277,7 @@ def qc_interpretation(z_prime: float) -> tuple[str, str]:
     return (
         "Fail",
         "The plate failed QC because the Z-prime factor is below zero. "
-        "Only group statistics are reported; hit calls and derived charts are suppressed.",
+        "Only group statistics are reported.",
     )
 
 
@@ -381,8 +381,8 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     <div class="content">
       <div class="threshold-note">
         Enzyme + Film controls: <strong>A1, B1, C1 and D1</strong><br>
-        Enzyme + Film mean: <strong>{film_mean:.6f}</strong><br>
-        Enzyme + Film StDev: <strong>{film_sd:.6f}</strong><br>
+        Enzyme + Film-control mean: <strong>{film_mean:.6f}</strong><br>
+        Enzyme + Film-control StDev: <strong>{film_sd:.6f}</strong><br>
         High-hit rule: raw signal &gt;= mean + 3 x StDev =
         <strong>{high_threshold:.6f}</strong>
       </div>
@@ -396,7 +396,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     <div class="content">
       <div class="threshold-note">
         Enzyme + Film controls: <strong>A1, B1, C1 and D1</strong><br>
-        Enzyme + Film mean: <strong>{film_mean:.6f}</strong><br>
+        Enzyme + Film-control mean: <strong>{film_mean:.6f}</strong><br>
         Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
       </div>
       <div class="table-wrap">{standard_hits_table}</div>
@@ -424,8 +424,8 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
 
   <section class="qc-failure">
     <p>
-      Z-prime is below zero, so only group statistics are reported.
-      The Z-score heatmap, hit tables, and group-average chart are suppressed.
+      Z-prime is below zero, so the Z-score heatmap, hit tables,
+      group averages, and CSV hit exports have been suppressed.
     </p>
   </section>
 """
@@ -543,7 +543,7 @@ section {{ margin-top: 18px; padding: 22px; }}
 }}
 img {{ width: 100%; height: auto; display: block; }}
 .qc {{
-  border-left: 5px solid {"var(--bad)" if np.isnan(z_prime) or z_prime < 0 else "var(--good)" if z_prime > .3 else "var(--warn)"};
+  border-left: 5px solid {"var(--bad)" if np.isnan(z_prime) or z_prime < 0 else "var(--good)" if z_prime > .5 else "var(--warn)"};
 }}
 .note {{ color: var(--muted); }}
 code {{ background: #eef1f7; padding: 2px 5px; border-radius: 4px; }}
@@ -614,7 +614,6 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
         output_path.with_name(output_path.stem + "_standard_hits.csv"),
     ]
 
-    # Group statistics are exported for every plate, including failed plates.
     stats_export = stats.reset_index()
     stats_export.loc[len(stats_export)] = {
         "Group": f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE})",
@@ -625,21 +624,22 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     if report_statistics:
         # Keep the legacy filename for compatibility with older app versions.
         standard_hits.to_csv(export_paths[1], index=False)
-        high_hits.to_csv(export_paths[2], index=False)
-        standard_hits.to_csv(export_paths[3], index=False)
+        standard_hits.to_csv(export_paths[2], index=False)
+        high_hits.to_csv(export_paths[3], index=False)
     else:
-        # Failed plates retain group statistics but do not retain hit exports.
+        # Keep group statistics, but remove hit exports for a failed plate.
         for export_path in export_paths[1:]:
             export_path.unlink(missing_ok=True)
 
     print(f"HTML report: {output_path.resolve()}")
-    print(
-        "Statistics: "
-        f"{output_path.with_name(output_path.stem + '_statistics.csv').resolve()}"
-    )
-    print(stats)
-    if not report_statistics:
-        print("Hit exports suppressed because Z-prime is below zero.")
+    if report_statistics:
+        print(
+            "Statistics: "
+            f"{output_path.with_name(output_path.stem + '_statistics.csv').resolve()}"
+        )
+        print(stats)
+    else:
+        print("Hit exports suppressed because Z-prime is below zero; group statistics were exported.")
     print(f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE}): {z_prime:.6f}")
 
 
