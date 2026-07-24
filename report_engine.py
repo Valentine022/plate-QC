@@ -306,7 +306,6 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     stats_display = stats.copy()
     for column in ["Average", "StDev", "Min", "Max"]:
         stats_display[column] = stats_display[column].map(lambda x: "—" if pd.isna(x) else f"{x:.6f}")
-    stats_display["CV %"] = stats_display["CV %"].map(lambda x: "—" if pd.isna(x) else f"{x:.2f}%")
 
     stats_table = stats_display.reset_index().to_html(
         index=False, classes="report-table", border=0, escape=True
