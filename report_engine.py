@@ -264,7 +264,7 @@ def make_group_chart(stats: pd.DataFrame) -> str:
 
 
 def qc_interpretation(z_prime: float) -> tuple[str, str]:
-    """Classify the plate from its Z-prime factor."""
+    """Classify the plate from its Z-score."""
     if np.isnan(z_prime):
         return "Fail", "The control groups could not be compared."
     if z_prime > 0.3:
@@ -276,7 +276,7 @@ def qc_interpretation(z_prime: float) -> tuple[str, str]:
         )
     return (
         "Fail",
-        "The plate failed QC because the Z-prime factor is below zero. "
+        "The plate failed QC because the Z-score is below zero. "
         "Only group statistics are reported.",
     )
 
@@ -289,7 +289,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
     z_prime = calculate_z_prime(stats, Z_PRIME_NEGATIVE, Z_PRIME_POSITIVE)
     qc_label, qc_message = qc_interpretation(z_prime)
 
-    # Statistics and hit calls are shown only when Z-prime is zero or higher.
+    # Statistics and hit calls are shown only when Z-score is zero or higher.
     report_statistics = not pd.isna(z_prime) and z_prime >= 0
 
     if report_statistics:
@@ -424,7 +424,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
 
   <section class="qc-failure">
     <p>
-      Z-prime is below zero, so the Z-score heatmap, hit tables,
+      Z-score is below zero, so the Z-score heatmap, hit tables,
       group averages, and CSV hit exports have been suppressed.
     </p>
   </section>
@@ -639,7 +639,7 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
         )
         print(stats)
     else:
-        print("Hit exports suppressed because Z-prime is below zero; group statistics were exported.")
+        print("Hit exports suppressed because Z-score is below zero; group statistics were exported.")
     print(f"Z' ({Z_PRIME_NEGATIVE} vs {Z_PRIME_POSITIVE}): {z_prime:.6f}")
 
 
