@@ -3,10 +3,10 @@
 Generate a 96-well plate HTML report from a CSV file.
 
 Plate map:
-- NC63 + Film: A1-D1
+- Enzyme + Film: A1-D1
 - Film: E1-H1
 - C: A2-H11
-- NC63 Lysate: A12-D12
+- Lysate: A12-D12
 - B: E12-H12
 
 Usage:
@@ -34,16 +34,16 @@ ROWS = list("ABCDEFGH")
 COLS = [str(i) for i in range(1, 13)]
 
 PLATE_GROUPS = {
-    "NC63 + Film": [(r, "1") for r in "ABCD"],
+    "Enzyme + Film": [(r, "1") for r in "ABCD"],
     "Film": [(r, "1") for r in "EFGH"],
     "C": [(r, str(c)) for r in ROWS for c in range(2, 12)],
-    "NC63 Lysate": [(r, "12") for r in "ABCD"],
+    "Lysate": [(r, "12") for r in "ABCD"],
     "B": [(r, "12") for r in "EFGH"],
 }
 
 # Z' comparison for this plate layout.
 Z_PRIME_NEGATIVE = "Film"
-Z_PRIME_POSITIVE = "NC63 + Film"
+Z_PRIME_POSITIVE = "Enzyme + Film"
 
 
 def load_plate(csv_path: Path) -> pd.DataFrame:
@@ -565,8 +565,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate a 96-well plate HTML QC report.")
     parser.add_argument("csv_file", type=Path)
     parser.add_argument("-o", "--output", type=Path, default=Path("plate_report.html"))
-    parser.add_argument("--title", default="NC63 + Film Plate QC Report")
-    parser.add_argument("--sample-name", default="Unknown Sample",
+    parser.add_argument("--title", default="Plate QC Report")
+    parser.add_argument("--sample-name", default="Sample",
                         help="Sample name displayed in the report")
     parser.add_argument(
         "--zscore-threshold",
