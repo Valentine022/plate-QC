@@ -305,6 +305,7 @@ def generate_html(
     output_path: Path,
     title: str,
     sample_name: str,
+    user_name: str = "",
     zscore_threshold: float | None,
     plate_groups: dict[str, list[tuple[str, str]]] | None = None,
 ) -> None:
