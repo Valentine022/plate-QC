@@ -426,18 +426,10 @@ def generate_html(
     <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
   </details>
 """
-        hits_section = f"""
+hits_section = f"""
   <details id="hits" open>
     <summary>Hit wells</summary>
     <div class="content">
-      <div class="threshold-note">
-        Enzyme + Film controls: <strong>A1, B1, C1 and D1</strong><br>
-        Enzyme + Film-control mean: <strong>{film_mean:.6f}</strong><br>
-        Enzyme + Film-control StDev: <strong>{film_sd:.6f}</strong><br>
-        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong><br>
-        High-hit rule: raw signal &gt;= mean + 3 x StDev =
-        <strong>{high_threshold:.6f}</strong>
-      </div>
       <div class="table-wrap">{combined_hits_table}</div>
     </div>
   </details>
