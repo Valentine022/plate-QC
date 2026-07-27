@@ -370,6 +370,19 @@ def generate_html(
         "No wells met the high-hit threshold.",
     )
 
+    combined_hits = pd.concat([high_hits, standard_hits], ignore_index=True)
+    if not combined_hits.empty:
+        combined_hits = (
+            combined_hits
+            .sort_values(["Raw value", "Result"], ascending=[False, True])
+            .drop_duplicates(subset="Well", keep="first")
+            .reset_index(drop=True)
+        )
+    combined_hits_table = format_hit_table(
+        combined_hits,
+        "No wells met either hit threshold.",
+    )
+
     raw_heatmap = make_raw_heatmap(plate)
 
     logo_path = Path(__file__).resolve().parent / "EvoralisLogo.png"
@@ -385,12 +398,11 @@ def generate_html(
 
     if report_statistics:
         z_heatmap = make_zscore_heatmap(plate)
-        group_chart = make_group_chart(stats)
+        group_chart = make_group_chart(stats.loc[["Enzyme + Film", "Lysate"]])
 
         statistics_nav = '<a href="#statistics">Statistics</a>'
         z_heatmap_nav = '<a href="#z-heatmap">Z-score Heatmap</a>'
-        standard_hits_nav = '<a href="#standard-hits">Standard Hits</a>'
-        high_hits_nav = '<a href="#high-hits">High Hits</a>'
+        hits_nav = '<a href="#hits">Hits</a>'
         averages_nav = '<a href="#averages">Group Averages</a>'
 
         statistics_section = f"""
@@ -406,34 +418,23 @@ def generate_html(
     <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
   </details>
 """
-        high_hits_section = f"""
-  <details id="high-hits" open>
-    <summary>High-threshold hit wells</summary>
+        hits_section = f"""
+  <details id="hits" open>
+    <summary>Hit wells</summary>
     <div class="content">
       <div class="threshold-note">
         Enzyme + Film controls: <strong>A1, B1, C1 and D1</strong><br>
         Enzyme + Film-control mean: <strong>{film_mean:.6f}</strong><br>
         Enzyme + Film-control StDev: <strong>{film_sd:.6f}</strong><br>
+        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong><br>
         High-hit rule: raw signal &gt;= mean + 3 x StDev =
         <strong>{high_threshold:.6f}</strong>
       </div>
-      <div class="table-wrap">{high_hits_table}</div>
+      <div class="table-wrap">{combined_hits_table}</div>
     </div>
   </details>
 """
-        standard_hits_section = f"""
-  <details id="standard-hits" open>
-    <summary>Standard hit wells</summary>
-    <div class="content">
-      <div class="threshold-note">
-        Enzyme + Film controls: <strong>A1, B1, C1 and D1</strong><br>
-        Enzyme + Film-control mean: <strong>{film_mean:.6f}</strong><br>
-        Standard-hit rule: raw signal &gt;= <strong>{film_mean:.6f}</strong>
-      </div>
-      <div class="table-wrap">{standard_hits_table}</div>
-    </div>
-  </details>
-"""
+
         averages_section = f"""
   <details id="averages">
     <summary>Group averages</summary>
@@ -443,8 +444,7 @@ def generate_html(
     else:
         statistics_nav = '<a href="#statistics">Statistics</a>'
         z_heatmap_nav = ""
-        standard_hits_nav = ""
-        high_hits_nav = ""
+        hits_nav = ""
         averages_nav = ""
 
         statistics_section = f"""
@@ -461,8 +461,7 @@ def generate_html(
   </section>
 """
         z_heatmap_section = ""
-        standard_hits_section = ""
-        high_hits_section = ""
+        hits_section = ""
         averages_section = ""
 
     html_doc = f"""<!doctype html>
@@ -583,13 +582,10 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 </head>
 <body>
 <nav class="topnav">
-  <a href="#overview">Overview</a>
-  <a href="#plate">Raw Plate</a>
-  {statistics_nav}
-  <a href="#raw-heatmap">Raw Heatmap</a>
+  {hits_nav}
   {z_heatmap_nav}
-  {standard_hits_nav}
-  {high_hits_nav}
+  <a href="#raw-heatmap">Raw Heatmap</a>
+  {statistics_nav}
   {averages_nav}
 </nav>
 <main>
@@ -607,37 +603,29 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     </div>
 </div>
 
-  <div class="cards">
-    <div class="card"><div class="label">Z' factor</div><div class="value">{z_prime:.4f}</div></div>
-  </div>
-
   <section class="qc">
     <h2>QC assessment: {qc_label}</h2>
     <p>{qc_message}</p>
   </section>
 
-  <div id="overview"></div>
+  <div class="cards">
+    <div class="card"><div class="label">Z' factor</div><div class="value">{z_prime:.4f}</div></div>
+  </div>
 
-  <details id="plate" open>
-    <summary>Raw plate values</summary>
-    <div class="content table-wrap">{plate_table}</div>
-  </details>
+  {hits_section}
 
-  {statistics_section}
+  {z_heatmap_section}
 
   <details id="raw-heatmap" open>
     <summary>Raw measurement heatmap</summary>
     <div class="content"><img src="{raw_heatmap}" alt="Raw plate measurement heatmap"></div>
   </details>
 
-  {z_heatmap_section}
-  {high_hits_section}
-  {standard_hits_section}
+  {statistics_section}
+
   {averages_section}
 
   <footer>
-    To change the Z' comparison, edit <code>Z_PRIME_NEGATIVE</code> and
-    <code>Z_PRIME_POSITIVE</code> near the top of the script.
   </footer>
 </main>
 </body>
@@ -662,8 +650,8 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     if report_statistics:
         # Keep the legacy filename for compatibility with older app versions.
         standard_hits.to_csv(export_paths[1], index=False)
-        standard_hits.to_csv(export_paths[2], index=False)
-        high_hits.to_csv(export_paths[3], index=False)
+        high_hits.to_csv(export_paths[2], index=False)
+        standard_hits.to_csv(export_paths[3], index=False)
     else:
         # Keep group statistics, but remove hit exports for a failed plate.
         for export_path in export_paths[1:]:
