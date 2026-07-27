@@ -82,7 +82,9 @@ if not st.user.is_logged_in:
         """
         <style>
           .stApp { background: #e8f7f5; }
-          .block-container { max-width: 900px; padding-top: 3rem; }
+          header[data-testid="stHeader"] { display: none; }
+      div[data-testid="stToolbar"] { display: none; }
+      .block-container { max-width: 900px; padding-top: 1rem; }
     .hero {
       display: flex;
       align-items: center;
@@ -192,7 +194,9 @@ st.markdown(
     """
     <style>
       .stApp { background: #e8f7f5; }
-      .block-container { max-width: 1200px; padding-top: 2rem; }
+      header[data-testid="stHeader"] { display: none; }
+      div[data-testid="stToolbar"] { display: none; }
+      .block-container { max-width: 1200px; padding-top: 1rem; }
         .hero {
             display: flex;
             align-items: center;
@@ -275,11 +279,6 @@ with st.sidebar:
         key="sample_name_input",
     )
 
-    report_title = st.text_input(
-        "Report title",
-        value="Plate QC",
-        key="report_title_input",
-    )
 
     st.caption(
         "QC rules: Z′ < 0 = Fail; 0–0.3 = Acceptable; "
@@ -413,7 +412,7 @@ if st.button(
                 report_kwargs = {
                     "csv_path": csv_path,
                     "output_path": html_path,
-                    "title": report_title,
+                    "title": sample_name.strip() or "Sample",
                     "sample_name": sample_name,
                     "zscore_threshold": None,
                     "plate_groups": plate_groups,
@@ -431,23 +430,45 @@ if st.button(
 
                 report_html = html_path.read_text(encoding="utf-8", errors="replace")
 
-                # Add the user name to the report even when using an older engine
-                # that does not yet accept a user_name argument.
+                # Ensure the user is visibly printed in the HTML report.
                 clean_user_name = user_name.strip()
-                if clean_user_name and "user_name" not in inspect.signature(generate_html).parameters:
+                if clean_user_name:
+                    escaped_user_name = (
+                        clean_user_name.replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;")
+                    )
                     user_line = (
                         '<p class="report-user"><strong>Prepared by:</strong> '
-                        + clean_user_name.replace("&", "&amp;")
-                            .replace("<", "&lt;")
-                            .replace(">", "&gt;")
+                        + escaped_user_name
                         + "</p>"
                     )
-                    body_match = re.search(r"<body[^>]*>", report_html, flags=re.IGNORECASE)
-                    if body_match:
-                        insert_at = body_match.end()
-                        report_html = report_html[:insert_at] + user_line + report_html[insert_at:]
-                    else:
-                        report_html = user_line + report_html
+
+                    # Avoid adding a duplicate when a newer report engine already prints it.
+                    if escaped_user_name not in report_html:
+                        heading_match = re.search(
+                            r"</h1>", report_html, flags=re.IGNORECASE
+                        )
+                        if heading_match:
+                            insert_at = heading_match.end()
+                            report_html = (
+                                report_html[:insert_at]
+                                + user_line
+                                + report_html[insert_at:]
+                            )
+                        else:
+                            body_match = re.search(
+                                r"<body[^>]*>", report_html, flags=re.IGNORECASE
+                            )
+                            if body_match:
+                                insert_at = body_match.end()
+                                report_html = (
+                                    report_html[:insert_at]
+                                    + user_line
+                                    + report_html[insert_at:]
+                                )
+                            else:
+                                report_html = user_line + report_html
 
                 results = {
                     "source_name": uploaded.name,
