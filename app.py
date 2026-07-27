@@ -110,7 +110,7 @@ if not st.user.is_logged_in:
     
     .evoralis-logo {
       width: auto;
-      height: 40px;
+      height: 80px;
       max-width: 220px;
       object-fit: contain;
     }
