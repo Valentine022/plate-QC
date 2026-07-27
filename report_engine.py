@@ -188,25 +188,33 @@ def figure_to_data_uri(fig) -> str:
 
 
 def make_zscore_heatmap(plate: pd.DataFrame) -> str:
-    """Create a Z-score heatmap relative to all valid wells on the plate."""
-    plate_mean = np.nanmean(plate.values)
-    plate_sd = np.nanstd(plate.values, ddof=0)
+    """Create a Z-score heatmap for sample columns 2-11 only.
 
-    if plate_sd == 0 or pd.isna(plate_sd):
-        z_plate = plate * np.nan
-    else:
-        z_plate = (plate - plate_mean) / plate_sd
+    Control columns 1 and 12 are excluded from the Z-score calculation and
+    displayed as light-grey cells in the heatmap.
+    """
+    sample_plate = plate.loc[:, [str(i) for i in range(2, 12)]]
+    plate_mean = np.nanmean(sample_plate.values)
+    plate_sd = np.nanstd(sample_plate.values, ddof=0)
+
+    z_plate = pd.DataFrame(np.nan, index=plate.index, columns=plate.columns)
+    if plate_sd != 0 and not pd.isna(plate_sd):
+        z_plate.loc[:, sample_plate.columns] = (sample_plate - plate_mean) / plate_sd
+
+    masked_values = np.ma.masked_invalid(z_plate.values.astype(float))
+    cmap = plt.get_cmap("coolwarm").copy()
+    cmap.set_bad(color="lightgrey")
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    image = ax.imshow(z_plate.values, cmap="coolwarm", aspect="auto")
+    image = ax.imshow(masked_values, cmap=cmap, aspect="auto")
     ax.set_xticks(np.arange(12), labels=COLS)
     ax.set_yticks(np.arange(8), labels=ROWS)
     ax.set_xlabel("Column")
     ax.set_ylabel("Row")
-    ax.set_title("Plate Z-score Heatmap")
+    ax.set_title("Plate Z-score Heatmap (sample columns 2-11)")
 
     for i in range(8):
-        for j in range(12):
+        for j in range(1, 11):
             value = z_plate.iloc[i, j]
             if not np.isnan(value):
                 r, g, b, _ = image.cmap(image.norm(value))
@@ -218,15 +226,14 @@ def make_zscore_heatmap(plate: pd.DataFrame) -> str:
                     f"{value:.1f}",
                     ha="center",
                     va="center",
-                    fontsize=10,
+                    fontsize=8,
                     color=text_colour,
                 )
 
     colorbar = fig.colorbar(image, ax=ax)
-    colorbar.set_label("Plate Z-score")
+    colorbar.set_label("Sample-well Z-score")
     fig.tight_layout()
     return figure_to_data_uri(fig)
-
 
 def make_raw_heatmap(plate: pd.DataFrame) -> str:
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -252,7 +259,7 @@ def make_raw_heatmap(plate: pd.DataFrame) -> str:
                     f"{value:.3f}",
                     ha="center",
                     va="center",
-                    fontsize=10,
+                    fontsize=7,
                     color=text_colour,
                 )
 
@@ -549,6 +556,21 @@ h2 {{ margin-top: 0; }}
 .card {{ padding: 18px; }}
 .card .label {{ color: var(--muted); font-size: 13px; }}
 .card .value {{ font-size: 27px; font-weight: 750; margin-top: 3px; }}
+.qc-summary {{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 28px;
+}}
+.qc-copy h2 {{ margin-bottom: 8px; }}
+.qc-copy p {{ margin: 0; }}
+.zscore-block {{ min-width: 220px; text-align: center; }}
+.zscore-label {{ color: var(--muted); font-size: 16px; font-weight: 700; }}
+.zscore-value {{ font-size: 64px; line-height: 1; font-weight: 850; margin-top: 8px; }}
+@media (max-width: 700px) {{
+  .qc-summary {{ grid-template-columns: 1fr; }}
+  .zscore-block {{ text-align: left; }}
+}}
 section {{ margin-top: 18px; padding: 22px; }}
 .grid-2 {{
   display: grid;
@@ -603,14 +625,16 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     </div>
 </div>
 
-  <section class="qc">
-    <h2>QC assessment: {qc_label}</h2>
-    <p>{qc_message}</p>
+  <section class="qc qc-summary">
+    <div class="qc-copy">
+      <h2>QC assessment: {qc_label}</h2>
+      <p>{qc_message}</p>
+    </div>
+    <div class="zscore-block">
+      <div class="zscore-label">Z' factor</div>
+      <div class="zscore-value">{z_prime:.4f}</div>
+    </div>
   </section>
-
-  <div class="cards">
-    <div class="card"><div class="label">Z' factor</div><div class="value">{z_prime:.4f}</div></div>
-  </div>
 
   {hits_section}
 
