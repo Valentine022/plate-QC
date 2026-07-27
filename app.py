@@ -184,13 +184,38 @@ st.markdown(
     <style>
       .stApp { background: #e8f7f5; }
       .block-container { max-width: 1200px; padding-top: 2rem; }
-      .hero {
-        background: white;
-        border: 1px solid #b9dfd8;
-        border-radius: 18px;
-        padding: 1.4rem 1.6rem;
-        margin-bottom: 1.2rem;
-      }
+        .hero {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: white;
+            border: 1px solid #b9dfd8;
+            border-radius: 18px;
+            padding: 1.2rem 1.6rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .hero-text {
+            flex: 1;
+        }
+        
+        .hero h1 {
+            margin: 0;
+            font-size: 2.2rem;
+            font-weight: 700;
+        }
+        
+        .hero p {
+            margin: 0.35rem 0 0 0;
+            font-size: 1.05rem;
+            color: #555;
+        }
+        
+        .evoralis-logo {
+            height: 48px;
+            width: auto;
+            flex-shrink: 0;
+        }
       .hero h1 { margin: 0; }
       .hero p { margin: .4rem 0 0 0; }
     </style>
