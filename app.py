@@ -225,7 +225,7 @@ st.markdown(
         }
         
         .evoralis-logo {
-            height: 48px;
+            height: 80px;
             width: auto;
             flex-shrink: 0;
         }
