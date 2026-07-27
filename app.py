@@ -215,6 +215,36 @@ with st.sidebar:
             """
         )
 
+        all_wells = [f"{row}{column}" for row in "ABCDEFGH" for column in range(1, 13)]
+
+        enzyme_film_wells = st.multiselect(
+            "Enzyme + Film wells",
+            options=all_wells,
+            default=["A1", "B1", "C1", "D1"],
+            key="enzyme_film_wells",
+        )
+
+        film_wells = st.multiselect(
+            "Film wells",
+            options=all_wells,
+            default=["E1", "F1", "G1", "H1"],
+            key="film_wells",
+        )
+
+        lysate_wells = st.multiselect(
+            "Lysate wells",
+            options=all_wells,
+            default=["A12", "B12", "C12", "D12"],
+            key="lysate_wells",
+        )
+
+        buffer_wells = st.multiselect(
+            "Buffer wells",
+            options=all_wells,
+            default=["E12", "F12", "G12", "H12"],
+            key="buffer_wells",
+        )
+
     with st.expander("Hit criteria"):
         st.markdown(
             """
@@ -246,6 +276,43 @@ if st.button(
     use_container_width=True,
 ):
     try:
+        selected_control_wells = (
+            enzyme_film_wells
+            + film_wells
+            + lysate_wells
+            + buffer_wells
+        )
+
+        if any(
+            not wells
+            for wells in (
+                enzyme_film_wells,
+                film_wells,
+                lysate_wells,
+                buffer_wells,
+            )
+        ):
+            raise ValueError("Each control group must contain at least one well.")
+
+        if len(selected_control_wells) != len(set(selected_control_wells)):
+            raise ValueError("A well cannot be selected in more than one group.")
+
+        sample_wells = [
+            well for well in all_wells
+            if well not in set(selected_control_wells)
+        ]
+
+        def convert_wells(wells: list[str]) -> list[tuple[str, str]]:
+            return [(well[0], well[1:]) for well in wells]
+
+        plate_groups = {
+            "Enzyme + Film": convert_wells(enzyme_film_wells),
+            "Film": convert_wells(film_wells),
+            "Samples": convert_wells(sample_wells),
+            "Lysate": convert_wells(lysate_wells),
+            "Buffer": convert_wells(buffer_wells),
+        }
+
         with st.spinner("Generating report..."):
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp = Path(temp_dir)
@@ -260,6 +327,7 @@ if st.button(
                     title=report_title,
                     sample_name=sample_name,
                     zscore_threshold=None,
+                    plate_groups=plate_groups,
                 )
 
                 if not html_path.exists():
