@@ -218,7 +218,7 @@ def make_zscore_heatmap(plate: pd.DataFrame) -> str:
                     f"{value:.1f}",
                     ha="center",
                     va="center",
-                    fontsize=8,
+                    fontsize=10,
                     color=text_colour,
                 )
 
@@ -252,7 +252,7 @@ def make_raw_heatmap(plate: pd.DataFrame) -> str:
                     f"{value:.3f}",
                     ha="center",
                     va="center",
-                    fontsize=7,
+                    fontsize=10,
                     color=text_colour,
                 )
 
