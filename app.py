@@ -179,7 +179,13 @@ with st.sidebar:
 
     st.divider()
     st.header("Report settings")
-
+    
+    user_name = st.text_input(
+        "User",
+        value="",
+        key="user_name_input",
+    )
+    
     sample_name = st.text_input(
         "Sample name",
         value="Sample",
