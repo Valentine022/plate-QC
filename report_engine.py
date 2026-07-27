@@ -617,10 +617,12 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
     <div style="text-align:right;">
         <h1 style="margin:0;">{html.escape(title)}</h1>
 
-        <div class="subtitle">
-            <strong>Sample:</strong> {html.escape(sample_name)}<br>
-            <strong>Source:</strong> {html.escape(csv_path.name)}<br>
-            <strong>Report generated:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+<div class="subtitle">
+    <strong>Prepared by:</strong> {html.escape(user_name)}<br>
+    <strong>Sample:</strong> {html.escape(sample_name)}<br>
+    <strong>Source:</strong> {html.escape(csv_path.name)}<br>
+    <strong>Report generated:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+</div>
         </div>
     </div>
 </div>
