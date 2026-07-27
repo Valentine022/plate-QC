@@ -418,10 +418,26 @@ if st.button(
                     "plate_groups": plate_groups,
                 }
 
-                # Pass the user name when the installed report engine supports it.
-                # This keeps the app compatible with older report_engine versions.
-                if "user_name" in inspect.signature(generate_html).parameters:
-                    report_kwargs["user_name"] = user_name.strip()
+                # Pass optional report-layout settings when supported by the
+                # installed report engine. Older engines continue to work.
+                engine_parameters = inspect.signature(generate_html).parameters
+                optional_engine_settings = {
+                    "user_name": user_name.strip(),
+                    "section_order": [
+                        "qc_assessment",
+                        "zscore",
+                        "hits",
+                        "zscore_heatmap",
+                        "raw_heatmap",
+                        "group_statistics",
+                        "group_averages",
+                    ],
+                    "combine_hit_tables": True,
+                    "group_average_groups": ["Enzyme + Film", "Lysate"],
+                }
+                for setting_name, setting_value in optional_engine_settings.items():
+                    if setting_name in engine_parameters:
+                        report_kwargs[setting_name] = setting_value
 
                 generate_html(**report_kwargs)
 
