@@ -717,7 +717,7 @@ def main() -> None:
     if not args.csv_file.exists():
         parser.error(f"CSV file not found: {args.csv_file}")
 
-    generate_html(args.csv_file, args.output, args.title, args.sample_name, args.zscore_threshold)
+    generate_html(args.csv_file, args.output, args.title, args.sample_name, args.zscore_threshold,user_name="")
 
 
 if __name__ == "__main__":
