@@ -398,7 +398,7 @@ def generate_html(
         logo_base64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
         logo_html = (
             f'<img src="data:image/png;base64,{logo_base64}" '
-            f'alt="Evoralis" style="height:120px;width:auto;">'
+            f'alt="Evoralis" style="height:140px;width:auto;">'
         )
     else:
         logo_html = ""
@@ -420,7 +420,7 @@ def generate_html(
 """
 
         z_heatmap_section = f"""
-  <details id="z-heatmap">
+  <details id="z-heatmap" open>
     <summary>Plate Z-score heatmap</summary>
     <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
   </details>
@@ -443,7 +443,7 @@ def generate_html(
 """
 
         averages_section = f"""
-  <details id="averages">
+  <details id="averages" open>
     <summary>Group averages</summary>
     <div class="content"><img src="{group_chart}" alt="Group average bar chart"></div>
   </details>
