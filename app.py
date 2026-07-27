@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import base64
 import tempfile
 from pathlib import Path
 
@@ -45,25 +45,67 @@ def claim_is_true(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() == "true"
     return bool(value)
+def get_logo_html() -> str:
+    app_directory = Path(__file__).resolve().parent
 
+    possible_logos = [
+        app_directory / "EvoralisLogo.png",
+        app_directory / "cropped-cropped-0_Evoralis_logo_for-emails_final_v2.png",
+    ]
+
+    for logo_path in possible_logos:
+        if logo_path.exists():
+            encoded_logo = base64.b64encode(
+                logo_path.read_bytes()
+            ).decode("ascii")
+
+            return (
+                f'<img class="evoralis-logo" '
+                f'src="data:image/png;base64,{encoded_logo}" '
+                f'alt="Evoralis">'
+            )
+
+    return ""
 
 # --------------------------------------------------
 # Authentication
 # --------------------------------------------------
-
+logo_html = get_logo_html()
 if not st.user.is_logged_in:
     st.markdown(
         """
         <style>
           .stApp { background: #e8f7f5; }
           .block-container { max-width: 900px; padding-top: 3rem; }
-          .hero {
-            background: white;
-            border: 1px solid #b9dfd8;
-            border-radius: 18px;
-            padding: 1.4rem 1.6rem;
-            margin-bottom: 1.2rem;
-          }
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 1.4rem;
+      background: white;
+      border: 1px solid #b9dfd8;
+      border-radius: 18px;
+      padding: 1.4rem 1.6rem;
+      margin-bottom: 1.2rem;
+    }
+    
+    .hero-text {
+      flex: 1;
+    }
+    
+    .hero h1 {
+      margin: 0;
+    }
+    
+    .hero p {
+      margin: .4rem 0 0 0;
+    }
+    
+    .evoralis-logo {
+      width: auto;
+      height: 70px;
+      max-width: 220px;
+      object-fit: contain;
+    }
           .hero h1 { margin: 0; }
           .hero p { margin: .4rem 0 0 0; }
         </style>
@@ -157,11 +199,12 @@ st.markdown(
 )
 
 st.markdown(
-    """
+    f"""
     <div class="hero">
     {logo_html}
       <h1>96-Well Plate QC</h1>
-      <p>Upload a plate CSV, generate the QC report, and download the results.</p>
+      <p>Upload a plate CSV, generate the QC report, and download the results. 
+      Upload report to: https://drive.google.com/drive/folders/10qL_JRWw_tyJOTAfTY__K-m2x9NE6ALR?usp=sharing</p>
     </div>
     """,
     unsafe_allow_html=True,
