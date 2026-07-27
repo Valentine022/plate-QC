@@ -62,9 +62,15 @@ def group_values(plate: pd.DataFrame, wells: list[tuple[str, str]]) -> pd.Series
     ).dropna()
 
 
-def calculate_statistics(plate: pd.DataFrame) -> pd.DataFrame:
+def calculate_statistics(
+    plate: pd.DataFrame,
+    plate_groups: dict[str, list[tuple[str, str]]] | None = None,
+) -> pd.DataFrame:
+    if plate_groups is None:
+        plate_groups = PLATE_GROUPS
+
     records = []
-    for group, wells in PLATE_GROUPS.items():
+    for group, wells in plate_groups.items():
         values = group_values(plate, wells)
         mean = values.mean()
         stdev = values.std(ddof=0)
@@ -111,13 +117,17 @@ def calculate_z_prime(stats: pd.DataFrame, negative: str, positive: str) -> floa
 
 def calculate_hit_tables(
     plate: pd.DataFrame,
+    plate_groups: dict[str, list[tuple[str, str]]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, float, float, float]:
     """Create standard-hit and high-hit tables from Enzyme + Film controls A1:D1.
 
     Standard hit: raw signal >= mean signal of Enzyme + Film controls.
     High hit: raw signal >= Enzyme + Film-control mean + 3 * Enzyme + Film-control sample SD.
     """
-    film_wells = PLATE_GROUPS["Enzyme + Film"]
+    if plate_groups is None:
+        plate_groups = PLATE_GROUPS
+
+    film_wells = plate_groups["Enzyme + Film"]
     film_values = group_values(plate, film_wells)
 
     film_mean = float(film_values.mean())
@@ -283,9 +293,19 @@ def qc_interpretation(z_prime: float) -> tuple[str, str]:
 
 from datetime import datetime
 
-def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: str, zscore_threshold: float | None) -> None:
+def generate_html(
+    csv_path: Path,
+    output_path: Path,
+    title: str,
+    sample_name: str,
+    zscore_threshold: float | None,
+    plate_groups: dict[str, list[tuple[str, str]]] | None = None,
+) -> None:
+    if plate_groups is None:
+        plate_groups = PLATE_GROUPS
+
     plate = load_plate(csv_path)
-    stats = calculate_statistics(plate)
+    stats = calculate_statistics(plate, plate_groups)
     z_prime = calculate_z_prime(stats, Z_PRIME_NEGATIVE, Z_PRIME_POSITIVE)
     qc_label, qc_message = qc_interpretation(z_prime)
 
@@ -294,7 +314,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
 
     if report_statistics:
         standard_hits, high_hits, film_mean, film_sd, high_threshold = (
-            calculate_hit_tables(plate)
+            calculate_hit_tables(plate, plate_groups)
         )
     else:
         empty_columns = [
@@ -358,7 +378,7 @@ def generate_html(csv_path: Path, output_path: Path, title: str, sample_name: st
         logo_base64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
         logo_html = (
             f'<img src="data:image/png;base64,{logo_base64}" '
-            f'alt="Evoralis" style="height:120px;width:auto;">'
+            f'alt="Evoralis" style="height:80px;width:auto;">'
         )
     else:
         logo_html = ""
