@@ -426,7 +426,7 @@ def generate_html(
     <div class="content"><img src="{z_heatmap}" alt="Plate Z-score heatmap"></div>
   </details>
 """
-hits_section = f"""
+        hits_section = f"""
   <details id="hits" open>
     <summary>Hit wells</summary>
     <div class="content">
@@ -618,7 +618,6 @@ footer {{ margin-top: 20px; color: var(--muted); font-size: 13px; }}
 </div>
         </div>
     </div>
-</div>
 
   <section class="qc qc-summary">
     <div class="qc-copy">
