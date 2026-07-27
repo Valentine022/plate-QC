@@ -159,6 +159,7 @@ st.markdown(
 st.markdown(
     """
     <div class="hero">
+    {logo_html}
       <h1>96-Well Plate QC</h1>
       <p>Upload a plate CSV, generate the QC report, and download the results.</p>
     </div>
