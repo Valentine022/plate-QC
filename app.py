@@ -1,6 +1,9 @@
 from __future__ import annotations
 import base64
+import inspect
+import re
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -407,21 +410,50 @@ if st.button(
 
                 html_path = temp / "plate_report.html"
 
-                generate_html(
-                    csv_path=csv_path,
-                    output_path=html_path,
-                    title=report_title,
-                    sample_name=sample_name,
-                    zscore_threshold=None,
-                    plate_groups=plate_groups,
-                )
+                report_kwargs = {
+                    "csv_path": csv_path,
+                    "output_path": html_path,
+                    "title": report_title,
+                    "sample_name": sample_name,
+                    "zscore_threshold": None,
+                    "plate_groups": plate_groups,
+                }
+
+                # Pass the user name when the installed report engine supports it.
+                # This keeps the app compatible with older report_engine versions.
+                if "user_name" in inspect.signature(generate_html).parameters:
+                    report_kwargs["user_name"] = user_name.strip()
+
+                generate_html(**report_kwargs)
 
                 if not html_path.exists():
                     raise FileNotFoundError("The HTML report was not created.")
 
+                report_html = html_path.read_text(encoding="utf-8", errors="replace")
+
+                # Add the user name to the report even when using an older engine
+                # that does not yet accept a user_name argument.
+                clean_user_name = user_name.strip()
+                if clean_user_name and "user_name" not in inspect.signature(generate_html).parameters:
+                    user_line = (
+                        '<p class="report-user"><strong>Prepared by:</strong> '
+                        + clean_user_name.replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;")
+                        + "</p>"
+                    )
+                    body_match = re.search(r"<body[^>]*>", report_html, flags=re.IGNORECASE)
+                    if body_match:
+                        insert_at = body_match.end()
+                        report_html = report_html[:insert_at] + user_line + report_html[insert_at:]
+                    else:
+                        report_html = user_line + report_html
+
                 results = {
                     "source_name": uploaded.name,
-                    "html": html_path.read_bytes(),
+                    "sample_name": sample_name,
+                    "generated_date": datetime.now().strftime("%Y-%m-%d"),
+                    "html": report_html.encode("utf-8"),
                 }
 
                 optional_outputs = {
@@ -450,6 +482,15 @@ if "plate_report_results" in st.session_state:
     results = st.session_state["plate_report_results"]
     base_name = Path(results["source_name"]).stem
 
+    def safe_filename_part(value: str, fallback: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
+        cleaned = cleaned.strip("._-")
+        return cleaned or fallback
+
+    safe_sample = safe_filename_part(results.get("sample_name", ""), "sample")
+    report_date = results.get("generated_date", datetime.now().strftime("%Y-%m-%d"))
+    report_prefix = f"{report_date}_{safe_sample}"
+
     st.success("Report generated successfully.")
 
     download_columns = st.columns(
@@ -465,7 +506,7 @@ if "plate_report_results" in st.session_state:
         st.download_button(
             "Download HTML report",
             data=results["html"],
-            file_name=f"{base_name}_plate_report.html",
+            file_name=f"{report_prefix}_plate_report.html",
             mime="text/html",
             key="download_html_button",
             use_container_width=True,
@@ -477,7 +518,7 @@ if "plate_report_results" in st.session_state:
             st.download_button(
                 "Download statistics",
                 data=results["statistics"],
-                file_name=f"{base_name}_statistics.csv",
+                file_name=f"{report_prefix}_statistics.csv",
                 mime="text/csv",
                 key="download_statistics_button",
                 use_container_width=True,
@@ -489,7 +530,7 @@ if "plate_report_results" in st.session_state:
             st.download_button(
                 "Download standard hits",
                 data=results["standard_hits"],
-                file_name=f"{base_name}_standard_hits.csv",
+                file_name=f"{report_prefix}_standard_hits.csv",
                 mime="text/csv",
                 key="download_standard_hits_button",
                 use_container_width=True,
@@ -501,7 +542,7 @@ if "plate_report_results" in st.session_state:
             st.download_button(
                 "Download high hits",
                 data=results["high_hits"],
-                file_name=f"{base_name}_high_hits.csv",
+                file_name=f"{report_prefix}_high_hits.csv",
                 mime="text/csv",
                 key="download_high_hits_button",
                 use_container_width=True,
