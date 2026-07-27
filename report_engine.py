@@ -378,7 +378,7 @@ def generate_html(
         logo_base64 = base64.b64encode(logo_path.read_bytes()).decode("ascii")
         logo_html = (
             f'<img src="data:image/png;base64,{logo_base64}" '
-            f'alt="Evoralis" style="height:80px;width:auto;">'
+            f'alt="Evoralis" style="height:120px;width:auto;">'
         )
     else:
         logo_html = ""
