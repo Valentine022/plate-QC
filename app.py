@@ -22,7 +22,8 @@ ALLOWED_DOMAIN = "evoralis.com"
 # Add manually approved Google-account email addresses here.
 ALLOWED_EMAILS = {
     "asha.webb@evoralis.com",
-    "valentine.patterson@evoralis.com"}
+    "valentine.patterson@evoralis.com",
+}
 
 
 def get_user_value(name: str, default=None):
@@ -45,6 +46,8 @@ def claim_is_true(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() == "true"
     return bool(value)
+
+
 def get_logo_html() -> str:
     app_directory = Path(__file__).resolve().parent
 
@@ -71,125 +74,60 @@ def get_logo_html() -> str:
 # Authentication
 # --------------------------------------------------
 logo_html = get_logo_html()
-st.markdown(
-    """
-    <style>
-      .stApp { background: #e8f7f5; }
-      .block-container { max-width: 1200px; padding-top: 2rem; }
+if not st.user.is_logged_in:
+    st.markdown(
+        """
+        <style>
+          .stApp { background: #e8f7f5; }
+          .block-container { max-width: 900px; padding-top: 3rem; }
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 1.4rem;
+      background: white;
+      border: 1px solid #b9dfd8;
+      border-radius: 18px;
+      padding: 1.4rem 1.6rem;
+      margin-bottom: 1.2rem;
+    }
+    
+    .hero-text {
+      flex: 1;
+    }
+    
+    .hero h1 {
+      margin: 0;
+    }
+    
+    .hero p {
+      margin: .4rem 0 0 0;
+    }
+    
+    .evoralis-logo {
+      width: auto;
+      height: 40px;
+      max-width: 220px;
+      object-fit: contain;
+    }
+          .hero h1 { margin: 0; }
+          .hero p { margin: .4rem 0 0 0; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-      .hero {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        background: white;
-        border: 1px solid #b9dfd8;
-        border-radius: 18px;
-        padding: 1.2rem 1.6rem;
-        margin-bottom: 1.5rem;
-      }
-
-      .hero-text {
-        flex: 1;
-      }
-
-      .hero h1 {
-        margin: 0;
-        font-size: 2.2rem;
-        font-weight: 700;
-      }
-
-      .hero p {
-        margin: 0.35rem 0 0 0;
-        font-size: 1.05rem;
-        color: #555;
-      }
-
-      .evoralis-logo {
-        height: 48px;
-        width: auto;
-        flex-shrink: 0;
-        object-fit: contain;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-    <style>
-      .stApp {
-        background: #e8f7f5;
-      }
-
-      .block-container {
-        max-width: 1200px;
-        padding-top: 2rem;
-      }
-
-      .hero {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        background: white;
-        border: 1px solid #b9dfd8;
-        border-radius: 18px;
-        padding: 1.2rem 1.6rem;
-        margin-bottom: 1.5rem;
-      }
-
-      .hero-text {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        flex: 1;
-      }
-
-      .hero h1 {
-        margin: 0;
-        font-size: 2.2rem;
-        font-weight: 700;
-      }
-
-      .hero-text p {
-        margin: 0.25rem 0;
-        font-size: 1.05rem;
-        color: #555;
-      }
-
-      .evoralis-logo {
-        height: 48px;
-        width: auto;
-        flex-shrink: 0;
-        object-fit: contain;
-      }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    f"""
-    <div class="hero">
-      {logo_html}
-      <div class="hero-text">
-        <h1>96-Well Plate QC</h1>
-        <p>Upload a plate CSV, generate the QC report, and download the results.</p>
-        <p style="margin-top:0.4rem;font-size:0.9rem;">
-          Upload report to:
-          <a
-            href="https://drive.google.com/drive/folders/10qL_JRWw_tyJOTAfTY__K-m2x9NE6ALR?usp=sharing"
-            target="_blank"
-          >
-            Google Drive
-          </a>
-        </p>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
+    st.markdown(
+        f"""
+        <div class="hero">
+          {logo_html}
+          <div class="hero-text">
+            <h1>96-Well Plate QC</h1>
+            <p>This private tool is available to authorised users.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.info("Sign in with Google to continue.")
 
@@ -293,17 +231,17 @@ st.markdown(
 
 st.markdown(
     f"""
-{logo_html}
-<div class="hero-text">
-    <h1>96-Well Plate QC</h1>
-    <p>Upload a plate CSV, generate the QC report, and download the results.</p>
-    <p>
-        Upload report to:
-        <a href="https://drive.google.com/drive/folders/10qL_JRWw_tyJOTAfTY__K-m2x9NE6ALR?usp=sharing">
-            Google Drive
-        </a>
-    </p>
-</div>
+    <div class="hero">
+      {logo_html}
+      <div class="hero-text">
+        <h1>96-Well Plate QC</h1>
+        <p>
+          Upload a plate CSV, generate the QC report, and download the results.
+          Upload the finished report to
+          <a href="https://drive.google.com/drive/folders/10qL_JRWw_tyJOTAfTY__K-m2x9NE6ALR?usp=sharing" target="_blank" rel="noopener noreferrer">Google Drive</a>.
+        </p>
+      </div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
