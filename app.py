@@ -602,6 +602,7 @@ def build_combined_report(all_results: list[dict], title: str, user_name: str) -
         f'<a href="#{anchor}">{heading}</a>' for anchor, heading, _ in section_specs
     )
     generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logo_html = get_logo_html()
     document = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -615,6 +616,9 @@ body{{margin:0;background:var(--bg);color:var(--text);font:19px/1.6 system-ui,sa
 nav{{position:sticky;top:0;z-index:10;display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;background:#f0e8f7;border-bottom:1px solid var(--border)}}
 nav a{{text-decoration:none;background:#9370DB;color:white;padding:7px 11px;border-radius:999px;font-weight:650}}
 main{{max-width:1280px;margin:auto;padding:28px 20px 60px}}
+.report-header{{display:flex;justify-content:space-between;align-items:center;gap:30px;margin-bottom:30px}}
+.report-title{{flex:1}}
+.evoralis-logo{{height:110px;width:auto;object-fit:contain}}
 h1{{margin:0 0 8px;font-size:48px;line-height:1.1}}
 .subtitle{{color:var(--muted);margin-bottom:30px;font-size:21px;line-height:1.55}}
 .analysis-group{{margin-top:28px}}
@@ -638,16 +642,21 @@ h1{{margin:0 0 8px;font-size:48px;line-height:1.1}}
 .zscore-block{{min-width:280px!important;padding:26px!important;border-radius:20px!important;background:#f0e8f7!important;border:3px solid #9370DB!important;text-align:center!important}}
 .zscore-label{{font-size:30px!important;font-weight:800!important;letter-spacing:.02em!important}}
 .zscore-value{{font-size:104px!important;line-height:.95!important;font-weight:900!important;margin-top:12px!important}}
-@media(max-width:760px){{.qc-summary{{grid-template-columns:1fr!important}}.zscore-block{{min-width:0!important}}.zscore-value{{font-size:82px!important}}}}
+@media(max-width:760px){{.report-header{{flex-direction:column;align-items:flex-start}}.evoralis-logo{{height:80px}}.qc-summary{{grid-template-columns:1fr!important}}.zscore-block{{min-width:0!important}}.zscore-value{{font-size:82px!important}}}}
 @media print{{nav{{display:none}}main{{padding-top:10px}}.plate-block{{break-inside:avoid}}}}
 </style>
 </head>
 <body>
 <nav>{nav}</nav>
 <main>
+<div class="report-header">
+{logo_html}
+<div class="report-title">
 <h1>{html_lib.escape(title)}</h1>
 <div class="subtitle"><strong>Prepared by:</strong> {html_lib.escape(user_name)}<br>
 <strong>Plates:</strong> {len(all_results)}<br><strong>Generated:</strong> {generated}</div>
+</div>
+</div>
 {''.join(grouped_html)}
 </main>
 </body>
