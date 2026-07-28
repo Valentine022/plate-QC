@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
+from bs4 import BeautifulSoup
 
 
 st.set_page_config(
@@ -486,6 +487,32 @@ def extract_qc_summary(report_html: str) -> str:
     return match.group(0) if match else ""
 
 
+
+def simplify_hit_tables(section_html: str) -> str:
+    """Keep only the Well and Result columns in hit tables."""
+    soup = BeautifulSoup(section_html, "html.parser")
+    removed_headers = {"Raw value", "Standard threshold", "High threshold"}
+
+    for table in soup.find_all("table"):
+        header_cells = table.find_all("th")
+        remove_indexes = [
+            index
+            for index, cell in enumerate(header_cells)
+            if cell.get_text(" ", strip=True) in removed_headers
+        ]
+        if not remove_indexes:
+            continue
+
+        for row in table.find_all("tr"):
+            cells = row.find_all(["th", "td"], recursive=False)
+            for index in sorted(remove_indexes, reverse=True):
+                if index < len(cells):
+                    cells[index].decompose()
+
+        table["class"] = list(dict.fromkeys(table.get("class", []) + ["hit-wells-table"]))
+
+    return str(soup)
+
 def build_combined_report(all_results: list[dict], title: str, user_name: str) -> bytes:
     """Create one report grouped by analysis section across all plates."""
     section_specs = [
@@ -509,6 +536,8 @@ def build_combined_report(all_results: list[dict], title: str, user_name: str) -
             )
             if not content:
                 content = '<p class="note">This section was not generated for this plate.</p>'
+            elif source_id == "hits":
+                content = simplify_hit_tables(content)
             plate_name = html_lib.escape(result["source_name"])
             plate_blocks.append(
                 f'<article class="plate-block"><h3>Plate {index}: {plate_name}</h3>{content}</article>'
@@ -549,6 +578,8 @@ h1{{margin:0 0 8px;font-size:48px;line-height:1.1}}
 .report-table th,.report-table td{{border-bottom:1px solid var(--border);padding:11px 13px;text-align:right}}
 .report-table th{{font-size:19px;font-weight:750}}
 .report-table th:first-child,.report-table td:first-child{{text-align:left}}
+.hit-wells-table th:first-child,.hit-wells-table td:first-child{{font-size:26px!important;font-weight:800!important;letter-spacing:.02em!important}}
+.hit-wells-table th:last-child,.hit-wells-table td:last-child{{font-size:21px!important;font-weight:700!important}}
 .table-wrap{{overflow-x:auto}} img{{max-width:100%;height:auto;display:block}}
 .note{{color:var(--muted);font-size:19px}}
 .qc-summary{{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(280px,360px)!important;align-items:center!important;gap:32px!important}}
@@ -803,4 +834,3 @@ if "plate_report_results" in st.session_state:
         height=1200,
         scrolling=True,
     )
-
