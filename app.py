@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
-from bs4 import BeautifulSoup
 
 
 st.set_page_config(
@@ -489,29 +488,80 @@ def extract_qc_summary(report_html: str) -> str:
 
 
 def simplify_hit_tables(section_html: str) -> str:
-    """Keep only the Well and Result columns in hit tables."""
-    soup = BeautifulSoup(section_html, "html.parser")
+    """Keep only the Well and Result columns without third-party HTML parsers."""
     removed_headers = {"Raw value", "Standard threshold", "High threshold"}
 
-    for table in soup.find_all("table"):
-        header_cells = table.find_all("th")
+    table_pattern = re.compile(
+        r"<table\b(?P<attrs>[^>]*)>(?P<body>.*?)</table>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    row_pattern = re.compile(
+        r"<tr\b(?P<attrs>[^>]*)>(?P<body>.*?)</tr>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    cell_pattern = re.compile(
+        r"<(?P<tag>th|td)\b(?P<attrs>[^>]*)>(?P<body>.*?)</(?P=tag)>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    def plain_text(fragment: str) -> str:
+        without_tags = re.sub(r"<[^>]+>", " ", fragment)
+        return html_lib.unescape(without_tags).strip()
+
+    def transform_table(match: re.Match) -> str:
+        attrs = match.group("attrs")
+        body = match.group("body")
+        rows = list(row_pattern.finditer(body))
+        if not rows:
+            return match.group(0)
+
+        header_cells = list(cell_pattern.finditer(rows[0].group("body")))
         remove_indexes = [
             index
             for index, cell in enumerate(header_cells)
-            if cell.get_text(" ", strip=True) in removed_headers
+            if plain_text(cell.group("body")) in removed_headers
         ]
         if not remove_indexes:
-            continue
+            return match.group(0)
 
-        for row in table.find_all("tr"):
-            cells = row.find_all(["th", "td"], recursive=False)
-            for index in sorted(remove_indexes, reverse=True):
-                if index < len(cells):
-                    cells[index].decompose()
+        remove_set = set(remove_indexes)
 
-        table["class"] = list(dict.fromkeys(table.get("class", []) + ["hit-wells-table"]))
+        def transform_row(row_match: re.Match) -> str:
+            row_body = row_match.group("body")
+            cells = list(cell_pattern.finditer(row_body))
+            if not cells:
+                return row_match.group(0)
 
-    return str(soup)
+            pieces = []
+            cursor = 0
+            for index, cell in enumerate(cells):
+                pieces.append(row_body[cursor:cell.start()])
+                if index not in remove_set:
+                    pieces.append(cell.group(0))
+                cursor = cell.end()
+            pieces.append(row_body[cursor:])
+            return f'<tr{row_match.group("attrs")}>{"".join(pieces)}</tr>'
+
+        transformed_body = row_pattern.sub(transform_row, body)
+
+        class_match = re.search(
+            r'\bclass\s*=\s*(["\'])(?P<classes>.*?)\1',
+            attrs,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if class_match:
+            classes = class_match.group("classes").split()
+            if "hit-wells-table" not in classes:
+                classes.append("hit-wells-table")
+            replacement = f'class={class_match.group(1)}{" ".join(classes)}{class_match.group(1)}'
+            attrs = attrs[:class_match.start()] + replacement + attrs[class_match.end():]
+        else:
+            attrs = attrs.rstrip() + ' class="hit-wells-table"'
+
+        return f"<table{attrs}>{transformed_body}</table>"
+
+    return table_pattern.sub(transform_table, section_html)
+
 
 def build_combined_report(all_results: list[dict], title: str, user_name: str) -> bytes:
     """Create one report grouped by analysis section across all plates."""
@@ -834,3 +884,4 @@ if "plate_report_results" in st.session_state:
         height=1200,
         scrolling=True,
     )
+
