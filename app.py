@@ -1,7 +1,9 @@
 from __future__ import annotations
 import base64
+import csv
 import inspect
 import io
+import html as html_lib
 import re
 import tempfile
 import zipfile
@@ -358,20 +360,210 @@ with st.sidebar:
 
 
 uploaded_files = st.file_uploader(
-    "Upload one or more 96-well plate CSVs",
-    type=["csv"],
+    "Upload plate CSV or TSV file(s)",
+    type=["csv", "tsv", "txt"],
     accept_multiple_files=True,
-    help="Each file should contain rows A–H and columns 1–12.",
+    help=(
+        "A file may contain one plate or several 8×12 plates stacked vertically. "
+        "Each stacked plate must repeat the 1–12 header row before rows A–H."
+    ),
     key="plate_csv_uploader",
 )
 
 if not uploaded_files:
-    st.info("Upload one or more CSV files to begin.")
+    st.info("Upload one or more plate files to begin.")
     st.stop()
 
-st.write(f"**Selected plates:** {len(uploaded_files)}")
+st.write(f"**Selected files:** {len(uploaded_files)}")
 st.caption(", ".join(uploaded.name for uploaded in uploaded_files))
 
+
+def split_stacked_plates(file_bytes: bytes, source_name: str) -> list[dict]:
+    """Split a CSV/TSV containing repeated 1–12 headers into 8×12 plates."""
+    text = file_bytes.decode("utf-8-sig", errors="replace")
+    nonempty_lines = [line for line in text.splitlines() if line.strip()]
+    if not nonempty_lines:
+        raise ValueError("The uploaded file is empty.")
+
+    sample = "\n".join(nonempty_lines[:20])
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;")
+        delimiter = dialect.delimiter
+    except csv.Error:
+        delimiter = "\t" if "\t" in nonempty_lines[0] else ","
+
+    rows = []
+    for row in csv.reader(nonempty_lines, delimiter=delimiter):
+        cleaned = [cell.strip() for cell in row]
+        while cleaned and cleaned[-1] == "":
+            cleaned.pop()
+        rows.append(cleaned)
+
+    expected_header = [str(number) for number in range(1, 13)]
+
+    def is_header(row: list[str]) -> bool:
+        return len(row) >= 12 and row[-12:] == expected_header
+
+    header_positions = [index for index, row in enumerate(rows) if is_header(row)]
+    if not header_positions:
+        raise ValueError(
+            "No plate header was found. Expected a row containing columns 1 through 12."
+        )
+
+    plates = []
+    source_stem = Path(source_name).stem
+    for plate_number, header_index in enumerate(header_positions, start=1):
+        data_rows = rows[header_index + 1:header_index + 9]
+        if len(data_rows) != 8:
+            raise ValueError(
+                f"Plate {plate_number} is incomplete: expected rows A–H after its header."
+            )
+
+        normalised_rows = []
+        for expected_row, row in zip("ABCDEFGH", data_rows):
+            if len(row) < 13:
+                raise ValueError(
+                    f"Plate {plate_number}, row {expected_row} has fewer than 12 values."
+                )
+            row_label = row[0].upper()
+            values = row[1:13]
+            if row_label != expected_row:
+                raise ValueError(
+                    f"Plate {plate_number}: expected row {expected_row}, found {row_label or 'blank'}."
+                )
+            normalised_rows.append([row_label, *values])
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["", *expected_header])
+        writer.writerows(normalised_rows)
+        plates.append(
+            {
+                "source_name": source_name,
+                "plate_name": f"{source_stem}_plate_{plate_number}",
+                "csv_bytes": output.getvalue().encode("utf-8"),
+            }
+        )
+
+    return plates
+
+
+plate_inputs = []
+input_errors = []
+for uploaded in uploaded_files:
+    try:
+        plate_inputs.extend(split_stacked_plates(uploaded.getvalue(), uploaded.name))
+    except Exception as exc:
+        input_errors.append({"source_name": uploaded.name, "error": str(exc)})
+
+if input_errors:
+    for item in input_errors:
+        st.error(f"{item['source_name']}: {item['error']}")
+
+if not plate_inputs:
+    st.stop()
+
+st.success(f"Detected {len(plate_inputs)} plate(s) across the uploaded file(s).")
+
+
+def extract_report_section(report_html: str, section_id: str) -> str:
+    """Extract one complete <section> or <details> block by its HTML id."""
+    pattern = re.compile(
+        rf'<(?P<tag>section|details)\b[^>]*\bid=["\']{re.escape(section_id)}["\'][^>]*>'
+        rf'.*?</(?P=tag)>',
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(report_html)
+    return match.group(0) if match else ""
+
+
+def extract_qc_summary(report_html: str) -> str:
+    pattern = re.compile(
+        r'<section\b[^>]*class=["\'][^"\']*\bqc\b[^"\']*["\'][^>]*>'
+        r'.*?</section>',
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(report_html)
+    return match.group(0) if match else ""
+
+
+def build_combined_report(all_results: list[dict], title: str, user_name: str) -> bytes:
+    """Create one report grouped by analysis section across all plates."""
+    section_specs = [
+        ("qc-results", "QC and Z′ results", "qc"),
+        ("hit-wells", "Hit wells", "hits"),
+        ("zscore-plots", "Z-score heatmaps", "z-heatmap"),
+        ("raw-plots", "Raw measurement heatmaps", "raw-heatmap"),
+        ("statistics", "Group statistics", "statistics"),
+        ("averages", "Group-average plots", "averages"),
+    ]
+
+    grouped_html = []
+    for anchor, heading, source_id in section_specs:
+        plate_blocks = []
+        for index, result in enumerate(all_results, start=1):
+            report_html = result["html"].decode("utf-8", errors="replace")
+            content = (
+                extract_qc_summary(report_html)
+                if source_id == "qc"
+                else extract_report_section(report_html, source_id)
+            )
+            if not content:
+                content = '<p class="note">This section was not generated for this plate.</p>'
+            plate_name = html_lib.escape(result["source_name"])
+            plate_blocks.append(
+                f'<article class="plate-block"><h3>Plate {index}: {plate_name}</h3>{content}</article>'
+            )
+        grouped_html.append(
+            f'<section id="{anchor}" class="analysis-group"><h2>{heading}</h2>'
+            + "".join(plate_blocks)
+            + "</section>"
+        )
+
+    nav = "".join(
+        f'<a href="#{anchor}">{heading}</a>' for anchor, heading, _ in section_specs
+    )
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    document = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html_lib.escape(title)}</title>
+<style>
+:root{{--bg:#e8f7f5;--panel:#fff;--border:#b9dfd8;--text:#1c2434;--muted:#667085;}}
+*{{box-sizing:border-box}}
+body{{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}}
+nav{{position:sticky;top:0;z-index:10;display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;background:#f0e8f7;border-bottom:1px solid var(--border)}}
+nav a{{text-decoration:none;background:#9370DB;color:white;padding:7px 11px;border-radius:999px;font-weight:650}}
+main{{max-width:1280px;margin:auto;padding:28px 20px 60px}}
+h1{{margin-bottom:4px}} .subtitle{{color:var(--muted);margin-bottom:24px}}
+.analysis-group{{margin-top:28px}}
+.analysis-group>h2{{border-bottom:3px solid #9370DB;padding-bottom:8px}}
+.plate-block{{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;margin:16px 0;box-shadow:0 7px 22px rgba(31,42,68,.06)}}
+.plate-block h3{{margin:0 0 12px}}
+.plate-block section,.plate-block details{{box-shadow:none;margin:0;border:0;padding:0;background:transparent}}
+.plate-block summary{{font-size:17px;padding:8px 0}}
+.plate-block .content{{padding:0}}
+.report-table{{border-collapse:collapse;width:100%}}
+.report-table th,.report-table td{{border-bottom:1px solid var(--border);padding:8px 10px;text-align:right}}
+.report-table th:first-child,.report-table td:first-child{{text-align:left}}
+.table-wrap{{overflow-x:auto}} img{{max-width:100%;height:auto;display:block}}
+.note{{color:var(--muted)}}
+@media print{{nav{{display:none}}main{{padding-top:10px}}.plate-block{{break-inside:avoid}}}}
+</style>
+</head>
+<body>
+<nav>{nav}</nav>
+<main>
+<h1>{html_lib.escape(title)}</h1>
+<div class="subtitle"><strong>Prepared by:</strong> {html_lib.escape(user_name)}<br>
+<strong>Plates:</strong> {len(all_results)}<br><strong>Generated:</strong> {generated}</div>
+{''.join(grouped_html)}
+</main>
+</body>
+</html>"""
+    return document.encode("utf-8")
 
 def safe_filename_part(value: str, fallback: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
@@ -458,27 +650,32 @@ if st.button(
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
 
-            for index, uploaded in enumerate(uploaded_files, start=1):
+            for index, plate_input in enumerate(plate_inputs, start=1):
                 progress.progress(
-                    (index - 1) / len(uploaded_files),
-                    text=f"Analysing {uploaded.name} ({index}/{len(uploaded_files)})...",
+                    (index - 1) / len(plate_inputs),
+                    text=(
+                        f"Analysing {plate_input['plate_name']} "
+                        f"({index}/{len(plate_inputs)})..."
+                    ),
                 )
 
                 try:
-                    plate_stem = safe_filename_part(Path(uploaded.name).stem, f"plate_{index}")
+                    plate_stem = safe_filename_part(
+                        plate_input["plate_name"], f"plate_{index}"
+                    )
                     plate_dir = temp / f"{index:03d}_{plate_stem}"
                     plate_dir.mkdir(parents=True, exist_ok=True)
 
-                    csv_path = plate_dir / Path(uploaded.name).name
-                    csv_path.write_bytes(uploaded.getvalue())
+                    csv_path = plate_dir / f"{plate_stem}.csv"
+                    csv_path.write_bytes(plate_input["csv_bytes"])
                     html_path = plate_dir / "plate_report.html"
 
                     display_sample_name = sample_name.strip()
-                    if len(uploaded_files) > 1:
+                    if len(plate_inputs) > 1:
                         display_sample_name = (
-                            f"{display_sample_name} – {Path(uploaded.name).stem}"
+                            f"{display_sample_name} – {plate_input['plate_name']}"
                             if display_sample_name
-                            else Path(uploaded.name).stem
+                            else plate_input["plate_name"]
                         )
                     display_sample_name = display_sample_name or "Sample"
 
@@ -519,7 +716,8 @@ if st.button(
                     )
 
                     result = {
-                        "source_name": uploaded.name,
+                        "source_name": plate_input["plate_name"],
+                        "source_file": plate_input["source_name"],
                         "sample_name": display_sample_name,
                         "generated_date": generated_date,
                         "html": report_html.encode("utf-8"),
@@ -537,7 +735,10 @@ if st.button(
                     all_results.append(result)
                 except Exception as plate_exc:
                     generation_errors.append(
-                        {"source_name": uploaded.name, "error": str(plate_exc)}
+                        {
+                            "source_name": plate_input["plate_name"],
+                            "error": str(plate_exc),
+                        }
                     )
 
             progress.progress(1.0, text="Plate analysis complete.")
@@ -548,8 +749,17 @@ if st.button(
             )
             raise RuntimeError(f"No reports were generated. {error_details}")
 
+        combined_title = (sample_name.strip() or "Multi-plate QC") + " – Combined report"
+        combined_report = build_combined_report(
+            all_results, combined_title, user_name.strip()
+        )
+
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                f"{generated_date}_{safe_filename_part(sample_name, 'plates')}_combined_report.html",
+                combined_report,
+            )
             for result in all_results:
                 plate_name = safe_filename_part(
                     Path(result["source_name"]).stem, "plate"
@@ -567,6 +777,7 @@ if st.button(
                         archive.writestr(folder + f"{prefix}_{suffix}", result[key])
 
         st.session_state["plate_report_results"] = all_results
+        st.session_state["plate_combined_report"] = combined_report
         st.session_state["plate_report_errors"] = generation_errors
         st.session_state["plate_report_zip"] = zip_buffer.getvalue()
 
@@ -597,7 +808,30 @@ if "plate_report_results" in st.session_state:
         use_container_width=True,
     )
 
-    st.subheader("Individual plate results")
+    st.download_button(
+        "Download combined section-grouped report",
+        data=st.session_state["plate_combined_report"],
+        file_name=(
+            f"{datetime.now().strftime('%Y-%m-%d')}_"
+            f"{safe_filename_part(sample_name, 'plates')}_combined_report.html"
+        ),
+        mime="text/html",
+        key="download_combined_report_button",
+        use_container_width=True,
+    )
+
+    st.subheader("Combined report preview")
+    st.caption(
+        "Results are grouped by section: all QC/Z′ results, then hit wells, "
+        "then heatmaps, statistics, and plots."
+    )
+    st.components.v1.html(
+        st.session_state["plate_combined_report"].decode("utf-8", errors="replace"),
+        height=1200,
+        scrolling=True,
+    )
+
+    st.subheader("Individual plate downloads")
     for result_index, results in enumerate(all_results):
         plate_label = f"{result_index + 1}. {results['source_name']}"
         with st.expander(plate_label, expanded=(len(all_results) == 1)):
@@ -646,8 +880,3 @@ if "plate_report_results" in st.session_state:
                     "Z′ value was below zero or could not be calculated."
                 )
 
-            st.components.v1.html(
-                results["html"].decode("utf-8", errors="replace"),
-                height=900,
-                scrolling=True,
-            )
