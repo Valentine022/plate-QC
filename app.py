@@ -1,8 +1,10 @@
 from __future__ import annotations
 import base64
 import inspect
+import io
 import re
 import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -355,32 +357,68 @@ with st.sidebar:
         )
 
 
-uploaded = st.file_uploader(
-    "Upload 96-well plate CSV",
+uploaded_files = st.file_uploader(
+    "Upload one or more 96-well plate CSVs",
     type=["csv"],
-    help="The file should contain rows A–H and columns 1–12.",
+    accept_multiple_files=True,
+    help="Each file should contain rows A–H and columns 1–12.",
     key="plate_csv_uploader",
 )
 
-if uploaded is None:
-    st.info("Upload a CSV file to begin.")
+if not uploaded_files:
+    st.info("Upload one or more CSV files to begin.")
     st.stop()
 
-st.write(f"**Selected file:** {uploaded.name}")
+st.write(f"**Selected plates:** {len(uploaded_files)}")
+st.caption(", ".join(uploaded.name for uploaded in uploaded_files))
+
+
+def safe_filename_part(value: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or fallback
+
+
+def add_user_to_report(report_html: str, clean_user_name: str) -> str:
+    """Add the preparer's name when an older report engine does not print it."""
+    if not clean_user_name:
+        return report_html
+
+    escaped_user_name = (
+        clean_user_name.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    if escaped_user_name in report_html:
+        return report_html
+
+    user_line = (
+        '<p class="report-user"><strong>Prepared by:</strong> '
+        + escaped_user_name
+        + "</p>"
+    )
+    heading_match = re.search(r"</h1>", report_html, flags=re.IGNORECASE)
+    if heading_match:
+        insert_at = heading_match.end()
+        return report_html[:insert_at] + user_line + report_html[insert_at:]
+
+    body_match = re.search(r"<body[^>]*>", report_html, flags=re.IGNORECASE)
+    if body_match:
+        insert_at = body_match.end()
+        return report_html[:insert_at] + user_line + report_html[insert_at:]
+
+    return user_line + report_html
 
 
 if st.button(
-    "Generate QC report",
+    "Generate QC reports",
     key="generate_report_button",
     type="primary",
     use_container_width=True,
 ):
     try:
         selected_control_wells = (
-            enzyme_film_wells
-            + film_wells
-            + lysate_wells
-            + buffer_wells
+            enzyme_film_wells + film_wells + lysate_wells + buffer_wells
         )
 
         if any(
@@ -397,10 +435,8 @@ if st.button(
         if len(selected_control_wells) != len(set(selected_control_wells)):
             raise ValueError("A well cannot be selected in more than one group.")
 
-        sample_wells = [
-            well for well in all_wells
-            if well not in set(selected_control_wells)
-        ]
+        selected_control_set = set(selected_control_wells)
+        sample_wells = [well for well in all_wells if well not in selected_control_set]
 
         def convert_wells(wells: list[str]) -> list[tuple[str, str]]:
             return [(well[0], well[1:]) for well in wells]
@@ -413,199 +449,205 @@ if st.button(
             "Buffer": convert_wells(buffer_wells),
         }
 
-        with st.spinner("Generating report..."):
-            with tempfile.TemporaryDirectory() as temp_dir:
-                temp = Path(temp_dir)
-                csv_path = temp / Path(uploaded.name).name
-                csv_path.write_bytes(uploaded.getvalue())
+        engine_parameters = inspect.signature(generate_html).parameters
+        generated_date = datetime.now().strftime("%Y-%m-%d")
+        all_results = []
+        generation_errors = []
+        progress = st.progress(0, text="Preparing plate reports...")
 
-                html_path = temp / "plate_report.html"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
 
-                report_kwargs = {
-                    "csv_path": csv_path,
-                    "output_path": html_path,
-                    "title": sample_name.strip() or "Sample",
-                    "sample_name": sample_name,
-                    "zscore_threshold": None,
-                    "plate_groups": plate_groups,
-                }
+            for index, uploaded in enumerate(uploaded_files, start=1):
+                progress.progress(
+                    (index - 1) / len(uploaded_files),
+                    text=f"Analysing {uploaded.name} ({index}/{len(uploaded_files)})...",
+                )
 
-                # Pass optional report-layout settings when supported by the
-                # installed report engine. Older engines continue to work.
-                engine_parameters = inspect.signature(generate_html).parameters
-                optional_engine_settings = {
-                    "user_name": user_name.strip(),
-                    "section_order": [
-                        "qc_assessment",
-                        "zscore",
-                        "hits",
-                        "zscore_heatmap",
-                        "raw_heatmap",
-                        "group_statistics",
-                        "group_averages",
-                    ],
-                    "combine_hit_tables": True,
-                    "group_average_groups": ["Enzyme + Film", "Lysate"],
-                }
-                for setting_name, setting_value in optional_engine_settings.items():
-                    if setting_name in engine_parameters:
-                        report_kwargs[setting_name] = setting_value
+                try:
+                    plate_stem = safe_filename_part(Path(uploaded.name).stem, f"plate_{index}")
+                    plate_dir = temp / f"{index:03d}_{plate_stem}"
+                    plate_dir.mkdir(parents=True, exist_ok=True)
 
-                generate_html(**report_kwargs)
+                    csv_path = plate_dir / Path(uploaded.name).name
+                    csv_path.write_bytes(uploaded.getvalue())
+                    html_path = plate_dir / "plate_report.html"
 
-                if not html_path.exists():
-                    raise FileNotFoundError("The HTML report was not created.")
-
-                report_html = html_path.read_text(encoding="utf-8", errors="replace")
-
-                # Ensure the user is visibly printed in the HTML report.
-                clean_user_name = user_name.strip()
-                if clean_user_name:
-                    escaped_user_name = (
-                        clean_user_name.replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;")
-                    )
-                    user_line = (
-                        '<p class="report-user"><strong>Prepared by:</strong> '
-                        + escaped_user_name
-                        + "</p>"
-                    )
-
-                    # Avoid adding a duplicate when a newer report engine already prints it.
-                    if escaped_user_name not in report_html:
-                        heading_match = re.search(
-                            r"</h1>", report_html, flags=re.IGNORECASE
+                    display_sample_name = sample_name.strip()
+                    if len(uploaded_files) > 1:
+                        display_sample_name = (
+                            f"{display_sample_name} – {Path(uploaded.name).stem}"
+                            if display_sample_name
+                            else Path(uploaded.name).stem
                         )
-                        if heading_match:
-                            insert_at = heading_match.end()
-                            report_html = (
-                                report_html[:insert_at]
-                                + user_line
-                                + report_html[insert_at:]
-                            )
-                        else:
-                            body_match = re.search(
-                                r"<body[^>]*>", report_html, flags=re.IGNORECASE
-                            )
-                            if body_match:
-                                insert_at = body_match.end()
-                                report_html = (
-                                    report_html[:insert_at]
-                                    + user_line
-                                    + report_html[insert_at:]
-                                )
-                            else:
-                                report_html = user_line + report_html
+                    display_sample_name = display_sample_name or "Sample"
 
-                results = {
-                    "source_name": uploaded.name,
-                    "sample_name": sample_name,
-                    "generated_date": datetime.now().strftime("%Y-%m-%d"),
-                    "html": report_html.encode("utf-8"),
-                }
+                    report_kwargs = {
+                        "csv_path": csv_path,
+                        "output_path": html_path,
+                        "title": display_sample_name,
+                        "sample_name": display_sample_name,
+                        "zscore_threshold": None,
+                        "plate_groups": plate_groups,
+                    }
 
-                optional_outputs = {
-                    "statistics": html_path.with_name(
-                        "plate_report_statistics.csv"
-                    ),
-                    "standard_hits": html_path.with_name(
-                        "plate_report_standard_hits.csv"
-                    ),
-                    "high_hits": html_path.with_name(
-                        "plate_report_high_hits.csv"
-                    ),
-                }
+                    optional_engine_settings = {
+                        "user_name": user_name.strip(),
+                        "section_order": [
+                            "qc_assessment",
+                            "zscore",
+                            "hits",
+                            "zscore_heatmap",
+                            "raw_heatmap",
+                            "group_statistics",
+                            "group_averages",
+                        ],
+                        "combine_hit_tables": True,
+                        "group_average_groups": ["Enzyme + Film", "Lysate"],
+                    }
+                    for setting_name, setting_value in optional_engine_settings.items():
+                        if setting_name in engine_parameters:
+                            report_kwargs[setting_name] = setting_value
 
-                for key, file_path in optional_outputs.items():
-                    if file_path.exists():
-                        results[key] = file_path.read_bytes()
+                    generate_html(**report_kwargs)
+                    if not html_path.exists():
+                        raise FileNotFoundError("The HTML report was not created.")
 
-        st.session_state["plate_report_results"] = results
+                    report_html = add_user_to_report(
+                        html_path.read_text(encoding="utf-8", errors="replace"),
+                        user_name.strip(),
+                    )
+
+                    result = {
+                        "source_name": uploaded.name,
+                        "sample_name": display_sample_name,
+                        "generated_date": generated_date,
+                        "html": report_html.encode("utf-8"),
+                    }
+
+                    optional_outputs = {
+                        "statistics": html_path.with_name("plate_report_statistics.csv"),
+                        "standard_hits": html_path.with_name("plate_report_standard_hits.csv"),
+                        "high_hits": html_path.with_name("plate_report_high_hits.csv"),
+                    }
+                    for key, file_path in optional_outputs.items():
+                        if file_path.exists():
+                            result[key] = file_path.read_bytes()
+
+                    all_results.append(result)
+                except Exception as plate_exc:
+                    generation_errors.append(
+                        {"source_name": uploaded.name, "error": str(plate_exc)}
+                    )
+
+            progress.progress(1.0, text="Plate analysis complete.")
+
+        if not all_results:
+            error_details = "; ".join(
+                f"{item['source_name']}: {item['error']}" for item in generation_errors
+            )
+            raise RuntimeError(f"No reports were generated. {error_details}")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for result in all_results:
+                plate_name = safe_filename_part(
+                    Path(result["source_name"]).stem, "plate"
+                )
+                sample_part = safe_filename_part(result["sample_name"], plate_name)
+                prefix = f"{result['generated_date']}_{sample_part}"
+                folder = f"{plate_name}/"
+                archive.writestr(folder + f"{prefix}_plate_report.html", result["html"])
+                for key, suffix in (
+                    ("statistics", "statistics.csv"),
+                    ("standard_hits", "standard_hits.csv"),
+                    ("high_hits", "high_hits.csv"),
+                ):
+                    if key in result:
+                        archive.writestr(folder + f"{prefix}_{suffix}", result[key])
+
+        st.session_state["plate_report_results"] = all_results
+        st.session_state["plate_report_errors"] = generation_errors
+        st.session_state["plate_report_zip"] = zip_buffer.getvalue()
 
     except Exception as exc:
         st.error(f"Report generation failed: {exc}")
 
 
 if "plate_report_results" in st.session_state:
-    results = st.session_state["plate_report_results"]
-    base_name = Path(results["source_name"]).stem
+    all_results = st.session_state["plate_report_results"]
+    generation_errors = st.session_state.get("plate_report_errors", [])
 
-    def safe_filename_part(value: str, fallback: str) -> str:
-        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
-        cleaned = cleaned.strip("._-")
-        return cleaned or fallback
+    st.success(f"Generated {len(all_results)} plate report(s) successfully.")
 
-    safe_sample = safe_filename_part(results.get("sample_name", ""), "sample")
-    report_date = results.get("generated_date", datetime.now().strftime("%Y-%m-%d"))
-    report_prefix = f"{report_date}_{safe_sample}"
+    if generation_errors:
+        st.warning(f"{len(generation_errors)} plate(s) could not be analysed.")
+        for item in generation_errors:
+            st.error(f"{item['source_name']}: {item['error']}")
 
-    st.success("Report generated successfully.")
-
-    download_columns = st.columns(
-        1 + sum(
-            key in results
-            for key in ("statistics", "standard_hits", "high_hits")
-        )
+    st.download_button(
+        "Download all plate results (ZIP)",
+        data=st.session_state["plate_report_zip"],
+        file_name=(
+            f"{datetime.now().strftime('%Y-%m-%d')}_"
+            f"{safe_filename_part(sample_name, 'plates')}_plate_reports.zip"
+        ),
+        mime="application/zip",
+        key="download_all_reports_button",
+        use_container_width=True,
     )
 
-    column_index = 0
-
-    with download_columns[column_index]:
-        st.download_button(
-            "Download HTML report",
-            data=results["html"],
-            file_name=f"{report_prefix}_plate_report.html",
-            mime="text/html",
-            key="download_html_button",
-            use_container_width=True,
-        )
-    column_index += 1
-
-    if "statistics" in results:
-        with download_columns[column_index]:
-            st.download_button(
-                "Download statistics",
-                data=results["statistics"],
-                file_name=f"{report_prefix}_statistics.csv",
-                mime="text/csv",
-                key="download_statistics_button",
-                use_container_width=True,
+    st.subheader("Individual plate results")
+    for result_index, results in enumerate(all_results):
+        plate_label = f"{result_index + 1}. {results['source_name']}"
+        with st.expander(plate_label, expanded=(len(all_results) == 1)):
+            safe_sample = safe_filename_part(results.get("sample_name", ""), "sample")
+            report_date = results.get(
+                "generated_date", datetime.now().strftime("%Y-%m-%d")
             )
-        column_index += 1
+            report_prefix = f"{report_date}_{safe_sample}"
 
-    if "standard_hits" in results:
-        with download_columns[column_index]:
-            st.download_button(
-                "Download standard hits",
-                data=results["standard_hits"],
-                file_name=f"{report_prefix}_standard_hits.csv",
-                mime="text/csv",
-                key="download_standard_hits_button",
-                use_container_width=True,
+            available_outputs = [
+                key for key in ("statistics", "standard_hits", "high_hits")
+                if key in results
+            ]
+            download_columns = st.columns(1 + len(available_outputs))
+
+            with download_columns[0]:
+                st.download_button(
+                    "Download HTML",
+                    data=results["html"],
+                    file_name=f"{report_prefix}_plate_report.html",
+                    mime="text/html",
+                    key=f"download_html_button_{result_index}",
+                    use_container_width=True,
+                )
+
+            labels = {
+                "statistics": ("Statistics", "statistics.csv"),
+                "standard_hits": ("Standard hits", "standard_hits.csv"),
+                "high_hits": ("High hits", "high_hits.csv"),
+            }
+            for column_index, key in enumerate(available_outputs, start=1):
+                label, suffix = labels[key]
+                with download_columns[column_index]:
+                    st.download_button(
+                        label,
+                        data=results[key],
+                        file_name=f"{report_prefix}_{suffix}",
+                        mime="text/csv",
+                        key=f"download_{key}_button_{result_index}",
+                        use_container_width=True,
+                    )
+
+            if "standard_hits" not in results and "high_hits" not in results:
+                st.warning(
+                    "This plate did not produce hit tables, usually because its "
+                    "Z′ value was below zero or could not be calculated."
+                )
+
+            st.components.v1.html(
+                results["html"].decode("utf-8", errors="replace"),
+                height=900,
+                scrolling=True,
             )
-        column_index += 1
-
-    if "high_hits" in results:
-        with download_columns[column_index]:
-            st.download_button(
-                "Download high hits",
-                data=results["high_hits"],
-                file_name=f"{report_prefix}_high_hits.csv",
-                mime="text/csv",
-                key="download_high_hits_button",
-                use_container_width=True,
-            )
-
-    if "statistics" not in results:
-        st.warning(
-            "The plate failed QC with Z′ below zero, so statistics and hit "
-            "tables were not generated."
-        )
-
-    st.subheader("Report preview")
-    st.components.v1.html(
-        results["html"].decode("utf-8", errors="replace"),
-        height=1100,
-        scrolling=True,
-    )
