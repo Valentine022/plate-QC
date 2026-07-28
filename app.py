@@ -6,7 +6,6 @@ import io
 import html as html_lib
 import re
 import tempfile
-import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -259,7 +258,7 @@ st.markdown(
       <div class="hero-text">
         <h1>96-Well Plate QC</h1>
         <p>
-          Upload a plate CSV, generate the QC report, and download the results.
+          Upload one or more stacked plate files, generate the QC analysis, and download one combined report.
           Upload the finished report to
           <a href="https://drive.google.com/drive/folders/10qL_JRWw_tyJOTAfTY__K-m2x9NE6ALR?usp=sharing" target="_blank" rel="noopener noreferrer">Google Drive</a>.
         </p>
@@ -533,23 +532,32 @@ def build_combined_report(all_results: list[dict], title: str, user_name: str) -
 <style>
 :root{{--bg:#e8f7f5;--panel:#fff;--border:#b9dfd8;--text:#1c2434;--muted:#667085;}}
 *{{box-sizing:border-box}}
-body{{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}}
+body{{margin:0;background:var(--bg);color:var(--text);font:19px/1.6 system-ui,sans-serif}}
 nav{{position:sticky;top:0;z-index:10;display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;background:#f0e8f7;border-bottom:1px solid var(--border)}}
 nav a{{text-decoration:none;background:#9370DB;color:white;padding:7px 11px;border-radius:999px;font-weight:650}}
 main{{max-width:1280px;margin:auto;padding:28px 20px 60px}}
-h1{{margin-bottom:4px}} .subtitle{{color:var(--muted);margin-bottom:24px}}
+h1{{margin:0 0 8px;font-size:48px;line-height:1.1}}
+.subtitle{{color:var(--muted);margin-bottom:30px;font-size:21px;line-height:1.55}}
 .analysis-group{{margin-top:28px}}
-.analysis-group>h2{{border-bottom:3px solid #9370DB;padding-bottom:8px}}
+.analysis-group>h2{{border-bottom:4px solid #9370DB;padding-bottom:10px;font-size:34px;line-height:1.2}}
 .plate-block{{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;margin:16px 0;box-shadow:0 7px 22px rgba(31,42,68,.06)}}
-.plate-block h3{{margin:0 0 12px}}
+.plate-block h3{{margin:0 0 16px;font-size:30px;line-height:1.2}}
 .plate-block section,.plate-block details{{box-shadow:none;margin:0;border:0;padding:0;background:transparent}}
-.plate-block summary{{font-size:17px;padding:8px 0}}
+.plate-block summary{{font-size:26px;font-weight:750;padding:10px 0}}
 .plate-block .content{{padding:0}}
-.report-table{{border-collapse:collapse;width:100%}}
-.report-table th,.report-table td{{border-bottom:1px solid var(--border);padding:8px 10px;text-align:right}}
+.report-table{{border-collapse:collapse;width:100%;font-size:18px}}
+.report-table th,.report-table td{{border-bottom:1px solid var(--border);padding:11px 13px;text-align:right}}
+.report-table th{{font-size:19px;font-weight:750}}
 .report-table th:first-child,.report-table td:first-child{{text-align:left}}
 .table-wrap{{overflow-x:auto}} img{{max-width:100%;height:auto;display:block}}
-.note{{color:var(--muted)}}
+.note{{color:var(--muted);font-size:19px}}
+.qc-summary{{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(280px,360px)!important;align-items:center!important;gap:32px!important}}
+.qc-copy h2{{font-size:38px!important;line-height:1.15!important;margin:0 0 12px!important}}
+.qc-copy p{{font-size:24px!important;line-height:1.5!important;margin:0!important}}
+.zscore-block{{min-width:280px!important;padding:26px!important;border-radius:20px!important;background:#f0e8f7!important;border:3px solid #9370DB!important;text-align:center!important}}
+.zscore-label{{font-size:30px!important;font-weight:800!important;letter-spacing:.02em!important}}
+.zscore-value{{font-size:104px!important;line-height:.95!important;font-weight:900!important;margin-top:12px!important}}
+@media(max-width:760px){{.qc-summary{{grid-template-columns:1fr!important}}.zscore-block{{min-width:0!important}}.zscore-value{{font-size:82px!important}}}}
 @media print{{nav{{display:none}}main{{padding-top:10px}}.plate-block{{break-inside:avoid}}}}
 </style>
 </head>
@@ -754,32 +762,9 @@ if st.button(
             all_results, combined_title, user_name.strip()
         )
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(
-                f"{generated_date}_{safe_filename_part(sample_name, 'plates')}_combined_report.html",
-                combined_report,
-            )
-            for result in all_results:
-                plate_name = safe_filename_part(
-                    Path(result["source_name"]).stem, "plate"
-                )
-                sample_part = safe_filename_part(result["sample_name"], plate_name)
-                prefix = f"{result['generated_date']}_{sample_part}"
-                folder = f"{plate_name}/"
-                archive.writestr(folder + f"{prefix}_plate_report.html", result["html"])
-                for key, suffix in (
-                    ("statistics", "statistics.csv"),
-                    ("standard_hits", "standard_hits.csv"),
-                    ("high_hits", "high_hits.csv"),
-                ):
-                    if key in result:
-                        archive.writestr(folder + f"{prefix}_{suffix}", result[key])
-
         st.session_state["plate_report_results"] = all_results
         st.session_state["plate_combined_report"] = combined_report
         st.session_state["plate_report_errors"] = generation_errors
-        st.session_state["plate_report_zip"] = zip_buffer.getvalue()
 
     except Exception as exc:
         st.error(f"Report generation failed: {exc}")
@@ -797,19 +782,7 @@ if "plate_report_results" in st.session_state:
             st.error(f"{item['source_name']}: {item['error']}")
 
     st.download_button(
-        "Download all plate results (ZIP)",
-        data=st.session_state["plate_report_zip"],
-        file_name=(
-            f"{datetime.now().strftime('%Y-%m-%d')}_"
-            f"{safe_filename_part(sample_name, 'plates')}_plate_reports.zip"
-        ),
-        mime="application/zip",
-        key="download_all_reports_button",
-        use_container_width=True,
-    )
-
-    st.download_button(
-        "Download combined section-grouped report",
+        "Download complete combined report",
         data=st.session_state["plate_combined_report"],
         file_name=(
             f"{datetime.now().strftime('%Y-%m-%d')}_"
@@ -830,53 +803,4 @@ if "plate_report_results" in st.session_state:
         height=1200,
         scrolling=True,
     )
-
-    st.subheader("Individual plate downloads")
-    for result_index, results in enumerate(all_results):
-        plate_label = f"{result_index + 1}. {results['source_name']}"
-        with st.expander(plate_label, expanded=(len(all_results) == 1)):
-            safe_sample = safe_filename_part(results.get("sample_name", ""), "sample")
-            report_date = results.get(
-                "generated_date", datetime.now().strftime("%Y-%m-%d")
-            )
-            report_prefix = f"{report_date}_{safe_sample}"
-
-            available_outputs = [
-                key for key in ("statistics", "standard_hits", "high_hits")
-                if key in results
-            ]
-            download_columns = st.columns(1 + len(available_outputs))
-
-            with download_columns[0]:
-                st.download_button(
-                    "Download HTML",
-                    data=results["html"],
-                    file_name=f"{report_prefix}_plate_report.html",
-                    mime="text/html",
-                    key=f"download_html_button_{result_index}",
-                    use_container_width=True,
-                )
-
-            labels = {
-                "statistics": ("Statistics", "statistics.csv"),
-                "standard_hits": ("Standard hits", "standard_hits.csv"),
-                "high_hits": ("High hits", "high_hits.csv"),
-            }
-            for column_index, key in enumerate(available_outputs, start=1):
-                label, suffix = labels[key]
-                with download_columns[column_index]:
-                    st.download_button(
-                        label,
-                        data=results[key],
-                        file_name=f"{report_prefix}_{suffix}",
-                        mime="text/csv",
-                        key=f"download_{key}_button_{result_index}",
-                        use_container_width=True,
-                    )
-
-            if "standard_hits" not in results and "high_hits" not in results:
-                st.warning(
-                    "This plate did not produce hit tables, usually because its "
-                    "Z′ value was below zero or could not be calculated."
-                )
 
