@@ -202,7 +202,11 @@ def make_zscore_heatmap(plate: pd.DataFrame) -> str:
         z_plate.loc[:, sample_plate.columns] = (sample_plate - plate_mean) / plate_sd
 
     masked_values = np.ma.masked_invalid(z_plate.values.astype(float))
-    cmap = plt.get_cmap("coolwarm").copy()
+    from matplotlib.colors import LinearSegmentedColormap
+    cmap = LinearSegmentedColormap.from_list(
+        "zscore_red_green",
+        ["#d73027", "#ffffbf", "#1a9850"]
+    )
     cmap.set_bad(color="lightgrey")
 
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -236,8 +240,14 @@ def make_zscore_heatmap(plate: pd.DataFrame) -> str:
     return figure_to_data_uri(fig)
 
 def make_raw_heatmap(plate: pd.DataFrame) -> str:
+    from matplotlib.colors import LinearSegmentedColormap
+    cmap = LinearSegmentedColormap.from_list(
+        "raw_yellow_purple",
+        ["#ffffb2", "#bd83c5", "#542788"]
+    )
+
     fig, ax = plt.subplots(figsize=(12, 6))
-    image = ax.imshow(plate.values, aspect="auto")
+    image = ax.imshow(plate.values, cmap=cmap, aspect="auto")
     ax.set_xticks(np.arange(12), labels=COLS)
     ax.set_yticks(np.arange(8), labels=ROWS)
     ax.set_xlabel("Column")
